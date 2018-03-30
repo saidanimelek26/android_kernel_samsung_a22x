@@ -3353,6 +3353,20 @@ sock_filter_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
 }
 
 static const struct bpf_func_proto *
+sock_addr_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
+{
+	switch (func_id) {
+	/* inet and inet6 sockets are created in a process
+	 * context so there is always a valid uid/gid
+	 */
+	case BPF_FUNC_get_current_uid_gid:
+		return &bpf_get_current_uid_gid_proto;
+	default:
+		return bpf_base_func_proto(func_id);
+	}
+}
+
+static const struct bpf_func_proto *
 sk_filter_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
 {
 	switch (func_id) {
@@ -3874,9 +3888,6 @@ static bool sock_addr_is_valid_access(int off, int size,
 	case bpf_ctx_range(struct bpf_sock_addr, user_ip4):
 		switch (prog->expected_attach_type) {
 		case BPF_CGROUP_INET4_BIND:
-		case BPF_CGROUP_INET4_CONNECT:
-		case BPF_CGROUP_UDP4_SENDMSG:
-		case BPF_CGROUP_UDP4_RECVMSG:
 			break;
 		default:
 			return false;
@@ -3885,26 +3896,6 @@ static bool sock_addr_is_valid_access(int off, int size,
 	case bpf_ctx_range_till(struct bpf_sock_addr, user_ip6[0], user_ip6[3]):
 		switch (prog->expected_attach_type) {
 		case BPF_CGROUP_INET6_BIND:
-		case BPF_CGROUP_INET6_CONNECT:
-		case BPF_CGROUP_UDP6_SENDMSG:
-		case BPF_CGROUP_UDP6_RECVMSG:
-			break;
-		default:
-			return false;
-		}
-		break;
-	case bpf_ctx_range(struct bpf_sock_addr, msg_src_ip4):
-		switch (prog->expected_attach_type) {
-		case BPF_CGROUP_UDP4_SENDMSG:
-			break;
-		default:
-			return false;
-		}
-		break;
-	case bpf_ctx_range_till(struct bpf_sock_addr, msg_src_ip6[0],
-				msg_src_ip6[3]):
-		switch (prog->expected_attach_type) {
-		case BPF_CGROUP_UDP6_SENDMSG:
 			break;
 		default:
 			return false;
@@ -3915,9 +3906,6 @@ static bool sock_addr_is_valid_access(int off, int size,
 	switch (off) {
 	case bpf_ctx_range(struct bpf_sock_addr, user_ip4):
 	case bpf_ctx_range_till(struct bpf_sock_addr, user_ip6[0], user_ip6[3]):
-	case bpf_ctx_range(struct bpf_sock_addr, msg_src_ip4):
-	case bpf_ctx_range_till(struct bpf_sock_addr, msg_src_ip6[0],
-				msg_src_ip6[3]):
 		/* Only narrow read access allowed for now. */
 		if (type == BPF_READ) {
 			bpf_ctx_record_field_size(info, size_default);
@@ -4592,23 +4580,6 @@ static u32 sock_addr_convert_ctx_access(enum bpf_access_type type,
 		*insn++ = BPF_ALU32_IMM(BPF_AND, si->dst_reg, SK_FL_PROTO_MASK);
 		*insn++ = BPF_ALU32_IMM(BPF_RSH, si->dst_reg,
 					SK_FL_PROTO_SHIFT);
-		break;
-
-	case offsetof(struct bpf_sock_addr, msg_src_ip4):
-		/* Treat t_ctx as struct in_addr for msg_src_ip4. */
-		SOCK_ADDR_LOAD_OR_STORE_NESTED_FIELD_SIZE_OFF(
-			struct bpf_sock_addr_kern, struct in_addr, t_ctx,
-			s_addr, BPF_SIZE(si->code), 0, tmp_reg);
-		break;
-
-	case bpf_ctx_range_till(struct bpf_sock_addr, msg_src_ip6[0],
-				msg_src_ip6[3]):
-		off = si->off;
-		off -= offsetof(struct bpf_sock_addr, msg_src_ip6[0]);
-		/* Treat t_ctx as struct in6_addr for msg_src_ip6. */
-		SOCK_ADDR_LOAD_OR_STORE_NESTED_FIELD_SIZE_OFF(
-			struct bpf_sock_addr_kern, struct in6_addr, t_ctx,
-			s6_addr32[0], BPF_SIZE(si->code), off, tmp_reg);
 		break;
 	}
 
