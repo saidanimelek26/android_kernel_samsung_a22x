@@ -494,6 +494,24 @@ static void fill_ac(acct_t *ac)
 	ac->ac_majflt = encode_comp_t(pacct->ac_majflt);
 	ac->ac_exitcode = pacct->ac_exitcode;
 	spin_unlock_irq(&current->sighand->siglock);
+
+	/* we really need to bite the bullet and change layout */
+	ac->ac_uid = from_kuid_munged(file->f_cred->user_ns, current_uid());
+	ac->ac_gid = from_kgid_munged(file->f_cred->user_ns, current_gid());
+#if ACCT_VERSION == 1 || ACCT_VERSION == 2
+	/* backward-compatible 16 bit fields */
+	ac.ac_uid16 = ac.ac_uid;
+	ac.ac_gid16 = ac.ac_gid;
+#elif ACCT_VERSION == 3
+	{
+		struct pid_namespace *ns = acct->ns;
+
+		ac->ac_pid = task_tgid_nr_ns(current, ns);
+		rcu_read_lock();
+		ac->ac_ppid = task_tgid_nr_ns(rcu_dereference(current->real_parent), ns);
+		rcu_read_unlock();
+	}
+#endif
 }
 /*
  *  do_acct_process does all actual work. Caller holds the reference to file.
