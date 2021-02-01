@@ -411,7 +411,6 @@ static int axi_clkgen_probe(struct platform_device *pdev)
 	struct clk_init_data init;
 	const char *parent_names[2];
 	const char *clk_name;
-	struct clk *axi_clk;
 	unsigned int i;
 	int ret;
 
