@@ -94,7 +94,6 @@
 #endif
 
 #include <asm/io.h>
-#include <asm/bugs.h>
 #include <asm/setup.h>
 #include <asm/sections.h>
 #include <asm/cacheflush.h>
@@ -753,7 +752,8 @@ asmlinkage __visible void __init start_kernel(void)
 	taskstats_init_early();
 	delayacct_init();
 
-	check_bugs();
+
+	arch_cpu_finalize_init();
 
 	acpi_subsystem_init();
 	arch_post_acpi_subsys_init();
