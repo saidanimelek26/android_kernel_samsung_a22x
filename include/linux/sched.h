@@ -47,7 +47,6 @@ struct rcu_node;
 struct reclaim_state;
 struct robust_list_head;
 struct sched_attr;
-struct sched_param;
 struct seq_file;
 struct sighand_struct;
 struct signal_struct;
@@ -294,12 +293,8 @@ struct vtime {
 	u64			gtime;
 };
 
-enum uclamp_id {
-	UCLAMP_MIN = 0, /* Minimum utilization */
-	UCLAMP_MAX,     /* Maximum utilization */
-
-	/* Utilization clamping constraints count */
-	UCLAMP_CNT
+struct sched_param {
+	int sched_priority;
 };
 
 struct sched_info {
