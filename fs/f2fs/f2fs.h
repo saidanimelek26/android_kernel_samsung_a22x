@@ -3782,13 +3782,13 @@ void f2fs_do_replace_block(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
 						   block_t old_blkaddr, block_t new_blkaddr,
 						   bool recover_curseg, bool recover_newaddr);
 void f2fs_replace_block(struct f2fs_sb_info *sbi, struct dnode_of_data *dn,
-						block_t old_addr, block_t new_addr,
-						unsigned char version, bool recover_curseg,
-						bool recover_newaddr);
-void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
-							  block_t old_blkaddr, block_t *new_blkaddr,
-							  struct f2fs_summary *sum, int type,
-							  struct f2fs_io_info *fio, bool add_list);
+			block_t old_addr, block_t new_addr,
+			unsigned char version, bool recover_curseg,
+			bool recover_newaddr);
+int f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
+			block_t old_blkaddr, block_t *new_blkaddr,
+			struct f2fs_summary *sum, int type,
+			struct f2fs_io_info *fio, bool add_list);
 void f2fs_wait_on_page_writeback(struct page *page,
 								 enum page_type type, bool ordered, bool locked);
 void f2fs_wait_on_block_writeback(struct inode *inode, block_t blkaddr);
