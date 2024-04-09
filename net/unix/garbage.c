@@ -243,7 +243,7 @@ void unix_gc(void)
 		long total_refs;
 		long inflight_refs;
 
-		total_refs = file_count(u->sk.sk_socket->file);
+		total_refs = file_count(sk->sk_socket->file);
 
 		BUG_ON(inflight_refs < 1);
 		BUG_ON(total_refs < inflight_refs);
