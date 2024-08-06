@@ -144,11 +144,10 @@ static int PCI_RefinedAccessConfig(struct pci_bus *bus, unsigned int devfn, u8 o
 	u32 vendID = 0;
 	int ret;
 
-	ret = pci_bus_read_config_dword(bus, devfn, PCI_VENDOR_ID, &vendID);
-	if (ret != PCIBIOS_SUCCESSFUL)
-		return PCIBIOS_DEVICE_NOT_FOUND;
+	if (pci_bus_read_config_dword(bus, devfn, PCI_VENDOR_ID, &vendID) == -1)
+		return -1;
 	if (PCI_POSSIBLE_ERROR(vendID))
-		return PCIBIOS_DEVICE_NOT_FOUND;
+		return -1;
 	return pci_bus_read_config_dword(bus, devfn, offset, value);
 }
 
