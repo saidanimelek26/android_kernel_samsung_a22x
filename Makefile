@@ -740,6 +740,10 @@ KBUILD_CFLAGS += $(call cc-option,-fno-reorder-blocks,) \
                  $(call cc-option,-fno-partial-inlining)
 endif
 
+# Rissu: handle older toolchains
+CLANG_VERSION=$(shell $(srctree)/scripts/clang-version.sh $(CC))
+$(info CLANG_VERSION is $(CLANG_VERSION))
+ifeq ($(shell test $(CLANG_VERSION) -gt 110000; echo $$?),0)
 ifdef CONFIG_LLVM_POLLY
 KBUILD_CFLAGS	+= -mllvm -polly \
 		   -mllvm -polly-ast-use-context \
@@ -752,6 +756,7 @@ KBUILD_CFLAGS	+= -mllvm -polly \
 # # in order to preserve the overall effect of the linker's DCE.
 ifdef CONFIG_LD_DEAD_CODE_DATA_ELIMINATION
 KBUILD_CFLAGS	+= -mllvm -polly-run-dce
+endif
 endif
 endif
 
