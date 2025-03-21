@@ -742,7 +742,6 @@ endif
 
 # Rissu: handle older toolchains
 CLANG_VERSION=$(shell $(srctree)/scripts/clang-version.sh $(CC))
-$(info CLANG_VERSION is $(CLANG_VERSION))
 ifeq ($(shell test $(CLANG_VERSION) -gt 110000; echo $$?),0)
 ifdef CONFIG_LLVM_POLLY
 KBUILD_CFLAGS	+= -mllvm -polly \
