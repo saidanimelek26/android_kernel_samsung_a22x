@@ -201,7 +201,6 @@ void panic(const char *fmt, ...)
 	regs.regs[30] = _RET_IP_;
 	regs.pc = regs.regs[30] - sizeof(unsigned int);
 #endif
-#endif
 	if (panic_on_warn) {
 		/*
 		 * This thread may hit another WARN() in the panic path.
