@@ -2000,6 +2000,8 @@ static bool has_locked_children(struct mount *mnt, struct dentry *dentry)
  *
  * Release with mntput().
  */
+#ifdef CONFIG_MANDATORY_FILE_LOCKING
+
 struct vfsmount *clone_private_mount(const struct path *path)
 {
 	struct mount *old_mnt = real_mount(path->mnt);
@@ -2022,7 +2024,8 @@ struct vfsmount *clone_private_mount(const struct path *path)
 		return ERR_CAST(new_mnt);
 
 	return &new_mnt->mnt;
-#endif
+
+#endif /* CONFIG_MANDATORY_FILE_LOCKING */
 
 invalid:
 	up_read(&namespace_sem);
