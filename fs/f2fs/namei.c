@@ -49,6 +49,10 @@ static struct inode *f2fs_new_inode(struct inode *dir, umode_t mode)
 
 	inode->i_ino = ino;
 	inode->i_blocks = 0;
+
+	if (IS_I_VERSION(inode))
+		inode->i_version++;
+
 	inode->i_mtime = inode->i_atime = inode->i_ctime =
 			F2FS_I(inode)->i_crtime = current_time(inode);
 	inode->i_generation = prandom_u32();
@@ -517,8 +521,8 @@ static struct dentry *f2fs_lookup(struct inode *dir, struct dentry *dentry,
 		if (PTR_ERR(inode) != -ENOMEM) {
 			struct f2fs_sb_info *sbi = F2FS_I_SB(dir);
 
-			printk_ratelimited(KERN_ERR "F2FS-fs: Invalid inode referenced: %u, "
-					"at parent inode: %lu, err: %ld\n", ino, dir->i_ino, PTR_ERR(inode));
+			printk_ratelimited(KERN_ERR "F2FS-fs: Invalid inode referenced: %u"
+					"at parent inode : %lu\n",ino, dir->i_ino);
 			print_block_data(sbi->sb, page->index,
 					page_address(page), 0, F2FS_BLKSIZE);
 			f2fs_bug_on(sbi, 1);
@@ -610,7 +614,6 @@ static int f2fs_unlink(struct inode *dir, struct dentry *dentry)
 		goto fail;
 	}
 	f2fs_delete_entry(de, page, dir, inode);
-	f2fs_unlock_op(sbi);
 #ifdef CONFIG_UNICODE
 	/* VFS negative dentries are incompatible with Encoding and
 	 * Case-insensitiveness. Eventually we'll want avoid
@@ -621,6 +624,7 @@ static int f2fs_unlink(struct inode *dir, struct dentry *dentry)
 	if (IS_CASEFOLDED(dir))
 		d_invalidate(dentry);
 #endif
+	f2fs_unlock_op(sbi);
 
 	if (IS_DIRSYNC(dir))
 		f2fs_sync_fs(sbi->sb, 1);
@@ -1053,7 +1057,7 @@ static int f2fs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	}
 
 	if (old_dir_entry) {
-		if (old_dir != new_dir) {
+		if (old_dir != new_dir)
 			f2fs_set_link(old_inode, old_dir_entry,
 						old_dir_page, new_dir);
 		else
@@ -1061,6 +1065,7 @@ static int f2fs_rename(struct inode *old_dir, struct dentry *old_dentry,
 		f2fs_i_links_write(old_dir, false);
 	}
 	if (F2FS_OPTION(sbi).fsync_mode == FSYNC_MODE_STRICT) {
+
 		f2fs_add_ino_entry(sbi, new_dir->i_ino, TRANS_DIR_INO);
 		if (S_ISDIR(old_inode->i_mode))
 			f2fs_add_ino_entry(sbi, old_inode->i_ino,

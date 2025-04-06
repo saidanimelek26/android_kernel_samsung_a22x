@@ -242,6 +242,7 @@ void unix_gc(void)
 	list_for_each_entry_safe(u, next, &gc_inflight_list, link) {
 		long total_refs;
 		long inflight_refs;
+		struct sock *sk = &u->sk;
 
 		total_refs = file_count(sk->sk_socket->file);
 
