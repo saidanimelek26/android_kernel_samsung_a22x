@@ -129,6 +129,7 @@ menu "DOS/FAT/NT Filesystems"
 
 source "fs/fat/Kconfig"
 source "fs/sdfat/Kconfig"
+source "fs/sdfat_ui7/Kconfig"
 source "fs/ntfs/Kconfig"
 
 endmenu

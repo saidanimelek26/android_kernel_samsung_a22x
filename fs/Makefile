@@ -82,7 +82,12 @@ obj-$(CONFIG_HUGETLBFS)		+= hugetlbfs/
 obj-$(CONFIG_CODA_FS)		+= coda/
 obj-$(CONFIG_MINIX_FS)		+= minix/
 obj-$(CONFIG_FAT_FS)		+= fat/
+ifeq ($(strip $(CONFIG_SDFAT_FS_ONEUI7)),y)
+obj-$(CONFIG_SDFAT_FS)		+= sdfat_ui7/
+else
 obj-$(CONFIG_SDFAT_FS)		+= sdfat/
+endif
+
 obj-$(CONFIG_BFS_FS)		+= bfs/
 obj-$(CONFIG_ISO9660_FS)	+= isofs/
 obj-$(CONFIG_HFSPLUS_FS)	+= hfsplus/ # Before hfs to find wrapped HFS+
