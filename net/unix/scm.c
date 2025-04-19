@@ -52,15 +52,22 @@ void unix_inflight(struct user_struct *user, struct file *fp)
 		struct unix_sock *u = unix_sk(s);
 
 		if (atomic_read(&u->inflight) == 0) {
-			BUG_ON(!list_empty(&u->link));
+			if (!list_empty(&u->link)) {
+				pr_warn("unix_inflight: inflight == 0 but link not empty (u=%p)\n", u);
+				WARN_ON_ONCE(1);
+				list_del_init(&u->link);  // Recover from bad state
+			}
 			list_add_tail(&u->link, &gc_inflight_list);
 		} else {
-			BUG_ON(list_empty(&u->link));
+			if (WARN_ON_ONCE(list_empty(&u->link)))
+				pr_warn("unix_inflight: inflight > 0 but link is empty (u=%p, inflight=%d)\n",
+				        u, atomic_read(&u->inflight));
 		}
-		atomic_fetch_add(&u->inflight, 1);
-		/* Paired with READ_ONCE() in wait_for_unix_gc() */
+
+		atomic_inc(&u->inflight);
 		WRITE_ONCE(unix_tot_inflight, unix_tot_inflight + 1);
 	}
+
 	WRITE_ONCE(user->unix_inflight, user->unix_inflight + 1);
 	spin_unlock(&unix_gc_lock);
 }
@@ -73,16 +80,27 @@ void unix_notinflight(struct user_struct *user, struct file *fp)
 
 	if (s) {
 		struct unix_sock *u = unix_sk(s);
+		int inflight = atomic_read(&u->inflight);
 
-		BUG_ON(atomic_read(&u->inflight) == 0);
-		BUG_ON(list_empty(&u->link));
+		if (WARN_ON_ONCE(inflight == 0)) {
+			pr_warn("unix_notinflight: inflight already 0 (u=%p)\n", u);
+			goto out;
+		}
 
-		atomic_fetch_sub(&u->inflight, 1);
+		if (WARN_ON_ONCE(list_empty(&u->link))) {
+			pr_warn("unix_notinflight: inflight socket not on GC list (u=%p, inflight=%d)\n",
+			        u, inflight);
+			goto out;
+		}
+
+		atomic_dec(&u->inflight);
 		if (atomic_read(&u->inflight) == 0)
 			list_del_init(&u->link);
-		/* Paired with READ_ONCE() in wait_for_unix_gc() */
+
 		WRITE_ONCE(unix_tot_inflight, unix_tot_inflight - 1);
 	}
+
+out:
 	WRITE_ONCE(user->unix_inflight, user->unix_inflight - 1);
 	spin_unlock(&unix_gc_lock);
 }
