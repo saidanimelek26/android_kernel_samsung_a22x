@@ -96,3 +96,4 @@ all.config
 
 # Kdevelop4
 *.kdev4
+SEND_TO_TG.txt
