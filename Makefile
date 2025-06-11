@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0
 VERSION = 4
 PATCHLEVEL = 14
-SUBLEVEL = 358
-EXTRAVERSION = -openela
-NAME = Petit Gorille
+SUBLEVEL = 359
+EXTRAVERSION = -openela-cip-patches
+NAME = World Machine
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
