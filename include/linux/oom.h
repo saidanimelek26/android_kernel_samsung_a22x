@@ -64,6 +64,7 @@ static inline bool oom_task_origin(const struct task_struct *p)
 
 static inline bool tsk_is_oom_victim(struct task_struct * tsk)
 {
+
 	return tsk->signal->oom_mm;
 }
 
