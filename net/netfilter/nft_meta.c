@@ -210,6 +210,11 @@ void nft_meta_get_eval(const struct nft_expr *expr,
 		*dest = prandom_u32_state(state);
 		break;
 	}
+#ifdef CONFIG_XFRM
+	case NFT_META_SECPATH:
+		nft_reg_store8(dest, !!skb->sp);
+		break;
+#endif
 	default:
 		WARN_ON(1);
 		goto err;
