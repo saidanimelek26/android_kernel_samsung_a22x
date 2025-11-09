@@ -3184,6 +3184,27 @@ static struct bpf_insn_aux_data *cur_aux(struct bpf_verifier_env *env)
 	return &env->insn_aux_data[env->insn_idx];
 }
 
+
+enum {
+
+
+	REASON_BOUNDS	= -1,
+
+
+	REASON_TYPE	= -2,
+
+
+	REASON_PATHS	= -3,
+
+
+	REASON_LIMIT	= -4,
+
+
+	REASON_STACK	= -5,
+
+
+};
+
 static int retrieve_ptr_limit(const struct bpf_reg_state *ptr_reg,
 			      u32 *alu_limit, bool mask_to_left)
 {
