@@ -4614,7 +4614,8 @@ skip_classify:
 	if (pt_prev) {
 		if (unlikely(skb_orphan_frags_rx(skb, GFP_ATOMIC)))
 			goto drop;
-//		*ppt_prev = pt_prev;
+		else
+			ret = pt_prev->func(skb, skb->dev, pt_prev, orig_dev);
 	} else {
 drop:
 		if (!deliver_exact)
@@ -5461,10 +5462,6 @@ static int process_backlog(struct napi_struct *napi, int quota)
 	bool again = true;
 	int work = 0;
 
-#if defined(NET_RX_BATCH_SOLUTION)
-	INIT_LIST_HEAD(&sd->skb_rx_list);
-#endif
-
 	/* Check if we have pending ipi, its better to send them now,
 	 * not waiting net_rx_action() end.
 	 */
@@ -5477,26 +5474,6 @@ static int process_backlog(struct napi_struct *napi, int quota)
 	while (again) {
 		struct sk_buff *skb;
 
-#if defined(NET_RX_BATCH_SOLUTION)
-		while ((skb = __skb_dequeue(&sd->process_queue))) {
-			input_queue_head_incr(sd);
-			list_add_tail(&skb->list, &sd->skb_rx_list);
-			if (++work >= quota) {
-				rcu_read_lock();
-				__netif_receive_skb(&sd->skb_rx_list);
-				rcu_read_unlock();
-				INIT_LIST_HEAD(&sd->skb_rx_list);
-				return work;
-			}
-		}
-
-		if (!list_empty(&sd->skb_rx_list)) {
-			rcu_read_lock();
-			__netif_receive_skb(&sd->skb_rx_list);
-			rcu_read_unlock();
-			INIT_LIST_HEAD(&sd->skb_rx_list);
-		}
-#else
 		while ((skb = __skb_dequeue(&sd->process_queue))) {
 			rcu_read_lock();
 			__netif_receive_skb(skb);
@@ -5506,7 +5483,7 @@ static int process_backlog(struct napi_struct *napi, int quota)
 				return work;
 
 		}
-#endif
+
 		local_irq_disable();
 		rps_lock(sd);
 		if (skb_queue_empty(&sd->input_pkt_queue)) {
@@ -5527,7 +5504,6 @@ static int process_backlog(struct napi_struct *napi, int quota)
 		rps_unlock(sd);
 		local_irq_enable();
 	}
-
 	return work;
 }
 
