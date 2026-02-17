@@ -61,6 +61,7 @@ struct f2fs_attr {
 			 const char *, size_t);
 	int struct_type;
 	int offset;
+	int size;
 	int id;
 };
 
@@ -569,11 +570,155 @@ static ssize_t f2fs_sec_stats_show(struct f2fs_sb_info *sbi, char *buf)
 }
 #endif
 
+static ssize_t unusable_show(struct f2fs_attr *a,
+		struct f2fs_sb_info *sbi, char *buf)
+{
+	block_t unusable;
+
+	if (test_opt(sbi, DISABLE_CHECKPOINT))
+		unusable = sbi->unusable_block_count;
+	else
+		unusable = f2fs_get_unusable_blocks(sbi);
+	return sprintf(buf, "%llu\n", (unsigned long long)unusable);
+}
+
+static ssize_t encoding_show(struct f2fs_attr *a,
+		struct f2fs_sb_info *sbi, char *buf)
+{
+#ifdef CONFIG_UNICODE
+	struct super_block *sb = sbi->sb;
+
+	if (f2fs_sb_has_casefold(sbi))
+		return snprintf(buf, PAGE_SIZE, "%s (%d.%d.%d)\n",
+			sb->s_encoding->charset,
+			(sb->s_encoding->version >> 16) & 0xff,
+			(sb->s_encoding->version >> 8) & 0xff,
+			sb->s_encoding->version & 0xff);
+#endif
+	return sprintf(buf, "(none)");
+}
+
+static ssize_t mounted_time_sec_show(struct f2fs_attr *a,
+		struct f2fs_sb_info *sbi, char *buf)
+{
+	return sprintf(buf, "%llu", SIT_I(sbi)->mounted_time);
+}
+
+#ifdef CONFIG_F2FS_STAT_FS
+static ssize_t moved_blocks_foreground_show(struct f2fs_attr *a,
+				struct f2fs_sb_info *sbi, char *buf)
+{
+	struct f2fs_stat_info *si = F2FS_STAT(sbi);
+
+	return sprintf(buf, "%llu\n",
+		(unsigned long long)(si->tot_blks -
+			(si->bg_data_blks + si->bg_node_blks)));
+}
+
+static ssize_t moved_blocks_background_show(struct f2fs_attr *a,
+				struct f2fs_sb_info *sbi, char *buf)
+{
+	struct f2fs_stat_info *si = F2FS_STAT(sbi);
+
+	return sprintf(buf, "%llu\n",
+		(unsigned long long)(si->bg_data_blks + si->bg_node_blks));
+}
+
+static ssize_t avg_vblocks_show(struct f2fs_attr *a,
+		struct f2fs_sb_info *sbi, char *buf)
+{
+	struct f2fs_stat_info *si = F2FS_STAT(sbi);
+
+	si->dirty_count = dirty_segments(sbi);
+	f2fs_update_sit_info(sbi);
+	return sprintf(buf, "%llu\n", (unsigned long long)(si->avg_vblocks));
+}
+#endif
+
+static void __sec_bigdata_init_value(struct f2fs_sb_info *sbi,
+		const char *attr_name)
+{
+	unsigned int i = 0;
+
+	if (!strcmp(attr_name, "sec_gc_stat")) {
+		sbi->sec_stat.gc_count[BG_GC] = 0;
+		sbi->sec_stat.gc_count[FG_GC] = 0;
+		sbi->sec_stat.gc_node_seg_count[BG_GC] = 0;
+		sbi->sec_stat.gc_node_seg_count[FG_GC] = 0;
+		sbi->sec_stat.gc_data_seg_count[BG_GC] = 0;
+		sbi->sec_stat.gc_data_seg_count[FG_GC] = 0;
+		sbi->sec_stat.gc_node_blk_count[BG_GC] = 0;
+		sbi->sec_stat.gc_node_blk_count[FG_GC] = 0;
+		sbi->sec_stat.gc_data_blk_count[BG_GC] = 0;
+		sbi->sec_stat.gc_data_blk_count[FG_GC] = 0;
+		sbi->sec_stat.gc_ttime[BG_GC] = 0;
+		sbi->sec_stat.gc_ttime[FG_GC] = 0;
+	} else if (!strcmp(attr_name, "sec_io_stat")) {
+		sbi->sec_stat.cp_cnt[STAT_CP_ALL] = 0;
+		sbi->sec_stat.cp_cnt[STAT_CP_BG] = 0;
+		sbi->sec_stat.cp_cnt[STAT_CP_FSYNC] = 0;
+		for (i = 0; i < NR_CP_REASON; i++)
+			sbi->sec_stat.cpr_cnt[i] = 0;
+		sbi->sec_stat.cp_max_interval = 0;
+		sbi->sec_stat.alloc_seg_type[LFS] = 0;
+		sbi->sec_stat.alloc_seg_type[SSR] = 0;
+		sbi->sec_stat.alloc_blk_count[LFS] = 0;
+		sbi->sec_stat.alloc_blk_count[SSR] = 0;
+		atomic64_set(&sbi->sec_stat.inplace_count, 0);
+		sbi->sec_stat.fsync_count = 0;
+		sbi->sec_stat.fsync_dirty_pages = 0;
+		sbi->sec_stat.hot_file_written_blocks = 0;
+		sbi->sec_stat.cold_file_written_blocks = 0;
+		sbi->sec_stat.warm_file_written_blocks = 0;
+		sbi->sec_stat.max_inmem_pages = 0;
+		sbi->sec_stat.drop_inmem_all = 0;
+		sbi->sec_stat.drop_inmem_files = 0;
+		if (sbi->sb->s_bdev->bd_part)
+			sbi->sec_stat.kwritten_byte = BD_PART_WRITTEN(sbi);
+		sbi->sec_stat.fs_por_error = 0;
+		sbi->sec_stat.fs_error = 0;
+		sbi->sec_stat.max_undiscard_blks = 0;
+	} else if (!strcmp(attr_name, "sec_fsck_stat")) {
+		sbi->sec_fsck_stat.fsck_read_bytes = 0;
+		sbi->sec_fsck_stat.fsck_written_bytes = 0;
+		sbi->sec_fsck_stat.fsck_elapsed_time = 0;
+		sbi->sec_fsck_stat.fsck_exit_code = 0;
+		sbi->sec_fsck_stat.valid_node_count = 0;
+		sbi->sec_fsck_stat.valid_inode_count = 0;
+	} else if (!strcmp(attr_name, "sec_defrag_stat")) {
+		sbi->s_sec_part_best_extents = 0;
+		sbi->s_sec_part_current_extents = 0;
+		sbi->s_sec_part_score = 0;
+		sbi->s_sec_defrag_writes_kb = 0;
+		sbi->s_sec_num_apps = 0;
+		sbi->s_sec_capacity_apps_kb = 0;
+	}
+}
+
+static ssize_t __sbi_show_value(struct f2fs_attr *a,
+		struct f2fs_sb_info *sbi, char *buf,
+		unsigned char *value)
+{
+	switch (a->size) {
+	case 1:
+		return sysfs_emit(buf, "%u\n", *(u8 *)value);
+	case 2:
+		return sysfs_emit(buf, "%u\n", *(u16 *)value);
+	case 4:
+		return sysfs_emit(buf, "%u\n", *(u32 *)value);
+	case 8:
+		return sysfs_emit(buf, "%llu\n", *(u64 *)value);
+	default:
+		f2fs_bug_on(sbi, 1);
+		return sysfs_emit(buf,
+				"show sysfs node value with wrong type\n");
+	}
+}
+
 static ssize_t f2fs_sbi_show(struct f2fs_attr *a,
 			struct f2fs_sb_info *sbi, char *buf)
 {
 	unsigned char *ptr = NULL;
-	unsigned int *ui;
 
 	ptr = __struct_ptr(sbi, a->struct_type);
 	if (!ptr)
@@ -730,9 +875,30 @@ static ssize_t f2fs_sbi_show(struct f2fs_attr *a,
 	}
 #endif
 
-	ui = (unsigned int *)(ptr + a->offset);
+	return __sbi_show_value(a, sbi, buf, ptr + a->offset);
+}
 
-	return sprintf(buf, "%u\n", *ui);
+static void __sbi_store_value(struct f2fs_attr *a,
+			struct f2fs_sb_info *sbi,
+			unsigned char *ui, unsigned long value)
+{
+	switch (a->size) {
+	case 1:
+		*(u8 *)ui = value;
+		break;
+	case 2:
+		*(u16 *)ui = value;
+		break;
+	case 4:
+		*(u32 *)ui = value;
+		break;
+	case 8:
+		*(u64 *)ui = value;
+		break;
+	default:
+		f2fs_bug_on(sbi, 1);
+		f2fs_msg(sbi->sb, KERN_ERR, "store sysfs node value with wrong type");
+	}
 }
 
 static ssize_t __sbi_store(struct f2fs_attr *a,
@@ -885,21 +1051,7 @@ out:
 		return count;
 	}
 
-#ifdef CONFIG_F2FS_SEC_SYSFS_DISCARD_SLAB_THRESHOLD
-	if (!strcmp(a->attr.name, "discard_cmd_slab_thresh_MB")) {
-		SM_I(sbi)->dcc_info->discard_cmd_slab_thresh_cnt =
-			((unsigned int)t << 20) / sizeof(struct discard_cmd);
-		return count;
-	}
-
-	if (!strcmp(a->attr.name, "undiscard_thresh_MB")) {
-		SM_I(sbi)->dcc_info->undiscard_thresh_blks =
-			(unsigned int)t << 8;
-		return count;
-	}
-#endif
-
-	*ui = (unsigned int)t;
+	__sbi_store_value(a, sbi, ptr + a->offset, t);
 
 	return count;
 }
@@ -992,19 +1144,21 @@ static ssize_t f2fs_feature_show(struct f2fs_attr *a,
 	return 0;
 }
 
-#define F2FS_ATTR_OFFSET(_struct_type, _name, _mode, _show, _store, _offset) \
+#define F2FS_ATTR_OFFSET(_struct_type, _name, _mode, _show, _store, _offset, _size) \
 static struct f2fs_attr f2fs_attr_##_name = {			\
 	.attr = {.name = __stringify(_name), .mode = _mode },	\
 	.show	= _show,					\
 	.store	= _store,					\
 	.struct_type = _struct_type,				\
-	.offset = _offset					\
+	.offset = _offset,					\
+	.size = _size						\
 }
 
 #define F2FS_RW_ATTR(struct_type, struct_name, name, elname)	\
 	F2FS_ATTR_OFFSET(struct_type, name, 0644,		\
 		f2fs_sbi_show, f2fs_sbi_store,			\
-		offsetof(struct struct_name, elname))
+		offsetof(struct struct_name, elname),		\
+		sizeof_field(struct struct_name, elname))
 
 #define F2FS_RW_ATTR_640(struct_type, struct_name, name, elname)	\
 	F2FS_ATTR_OFFSET(struct_type, name, 0640,		\
