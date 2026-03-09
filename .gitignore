@@ -96,4 +96,189 @@ all.config
 
 # Kdevelop4
 *.kdev4
-SEND_TO_TG.txt
+
+#
+# fetched Android config fragments
+#
+kernel/configs/android-*.cfg
+
+#
+# Documentation toolchain
+#
+Documentation/output/
+Documentation/sphinx_*/
+
+#
+# Build artifacts
+#
+*.builtin
+*.cmd
+*.d
+*.tmp_versions/
+*.symvers
+*.markers
+*.tmp
+build/
+out/
+out/.*
+out/*
+arch/arm64/boot/Image
+AnyKernel3/
+logs/
+#
+# Backup files
+#
+*~
+*.orig
+*.rej
+*.backup
+*.bak
+
+#
+# Patch files
+#
+*.patch
+*.diff
+
+#
+# LSP and IDE files
+#
+compile_commands.json
+.clangd/
+.cache/
+.ccls-cache/
+.vscode/
+.idea/
+
+#
+# Kate/KDevelop project files
+#
+.kateproject*
+*.kdev4
+.kdevelop.filelist
+
+#
+# Editor temporary files
+#
+.*.swp
+.*.swo
+*~
+\#*\#
+.#*
+
+#
+# OS generated files
+#
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+#
+# Custom build directories
+#
+build*/
+out*/
+output*/
+
+#
+# Kernel packaging
+#
+*.deb
+*.rpm
+*.pkg.tar.xz
+
+#
+# Security related
+#
+*.pem
+*.key
+*.crt
+*.csr
+
+#
+# Custom configuration files (keep your local configs private)
+#
+.config.local
+localversion*
+
+#
+# Bear generated files
+#
+.bear/
+
+#
+# Compilation database
+#
+compile_flags.txt
+
+#
+# Static analysis
+#
+.scan-build/
+scan-build-*/
+
+#
+# Valgrind
+#
+*.valgrind
+
+#
+# GDB files
+#
+.gdb_history
+gdb.txt
+
+#
+# Core dumps
+#
+core
+core.*
+vgcore.*
+!/net/core/
+!/net/core/**
+
+#
+# Profiling
+#
+*.gcov
+*.gcda
+*.gcno
+gmon.out
+
+#
+# Custom scripts and tools (optional - uncomment if you have these)
+#
+# scripts/local/
+# tools/local/
+
+#
+# Logging and debugging
+#
+*.log
+debug/
+logs/
+
+#
+# Testing artifacts
+#
+test-results/
+*.test
+
+#
+# Temporary build files from external tools
+#
+.tmp_*
+
+# Toolchain
+toolchain/
+
+# KernelSU
+KernelSU-Next/
+susfs4ksu/
+
+# Android crash logs
+tombstones/
