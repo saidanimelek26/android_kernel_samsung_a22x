@@ -160,13 +160,14 @@ static ssize_t sel_write_enforce(struct file *file, const char __user *buf,
 	new_value = !!new_value;
 
 	old_value = enforcing_enabled(state);
-#ifdef CONFIG_SECURITY_SELINUX_ALWAYS_ENFORCE
-	// If always enforce option is set, selinux is always enforcing
+#ifdef CONFIG_ALWAYS_ENFORCE
+	// If build is user build and enforce option is set, selinux is always enforcing
 	new_value = 1;
-#elif defined(CONFIG_SECURITY_SELINUX_ALWAYS_PERMISSIVE)
-	// If always permissive option is set, selinux is always permissive
-	new_value = 0;
+#elif CONFIG_ALWAYS_PERMISSIVE
+		// Set permissive in this case
+		new_value = 0;
 #endif
+
 	if (new_value != old_value) {
 		length = avc_has_perm(&selinux_state,
 				      current_sid(), SECINITSID_SECURITY,
@@ -2109,6 +2110,11 @@ static int __init init_sel_fs(void)
 	struct qstr null_name = QSTR_INIT(NULL_FILE_NAME,
 					  sizeof(NULL_FILE_NAME)-1);
 	int err;
+// [ SEC_SELINUX_PORTING_COMMON
+#ifdef CONFIG_ALWAYS_ENFORCE
+	selinux_enabled = 1;
+#endif
+// ] SEC_SELINUX_PORTING_COMMON			   
 
 	if (!selinux_enabled_boot)
 		return 0;
@@ -2146,6 +2152,7 @@ __initcall(init_sel_fs);
 void exit_sel_fs(void)
 {
 	sysfs_remove_mount_point(fs_kobj, "selinux");
+	dput(selinux_null.dentry);
 	kern_unmount(selinuxfs_mount);
 	unregister_filesystem(&sel_fs_type);
 }
