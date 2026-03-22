@@ -3774,6 +3774,25 @@ unsigned long get_swap_comp_pool_nrpages(void)
 	return x;
 }
 
+static int swap_size_notifier(struct notifier_block *nb,
+			       unsigned long action, void *data)
+{
+	struct seq_file *s;
+
+	s = (struct seq_file *)data;
+	if (s)
+		seq_printf(s, "SwapSize:       %8lu kB\n",
+			(unsigned long)get_swap_comp_pool_nrpages() << (PAGE_SHIFT - 10));
+	else
+		pr_cont("SwapSize:%lukB ",
+			(unsigned long)get_swap_comp_pool_nrpages() << (PAGE_SHIFT - 10));
+	return 0;
+}
+
+static struct notifier_block swap_size_nb = {
+	.notifier_call = swap_size_notifier,
+};
+
 static int __init swapfile_init(void)
 {
 	int nid;
