@@ -2950,11 +2950,8 @@ static int selinux_sb_kern_mount(struct super_block *sb, int flags, void *data)
 	struct common_audit_data ad;
 	int rc = 0;
 	struct security_mnt_opts opts;
-	bool lock_sdcardfs = !strcmp(sb->s_type->name, "sdcardfs");
 
 	security_init_mnt_opts(&opts);
-	if (lock_sdcardfs)
-		mutex_lock(&selinux_sdcardfs_lock);
 
 	if (!data)
 		goto out_set_opts;
@@ -2982,8 +2979,6 @@ out_free_opts:
 	rc = superblock_has_perm(cred, sb, FILESYSTEM__MOUNT, &ad);
 
 out_unlock:
-	if (lock_sdcardfs)
-		mutex_unlock(&selinux_sdcardfs_lock);
 
 	return rc;
 }

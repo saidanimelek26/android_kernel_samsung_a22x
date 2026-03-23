@@ -14,7 +14,6 @@
 
 #define pr_fmt(fmt) "LSM: " fmt
 
-#include <linux/task_integrity.h>
 #include <linux/bpf.h>
 #include <linux/capability.h>
 #include <linux/dcache.h>
