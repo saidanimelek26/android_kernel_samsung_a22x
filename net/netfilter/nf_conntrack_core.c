@@ -1122,14 +1122,7 @@ static void gc_worker(struct work_struct *work)
 		 */
 		rcu_read_unlock();
 		cond_resched_tasks_rcu_qs();
-		i++;
-
-		if (time_after(jiffies, end_time) && i < hashsz) {
-			gc_work->next_bucket = i;
-			next_run = 0;
-			break;
-		}
-	} while (i < hashsz);
+	} while (++buckets < goal);
 
 	if (gc_work->exiting)
 		return;
