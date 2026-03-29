@@ -51,7 +51,7 @@ void unix_inflight(struct user_struct *user, struct file *fp)
 	if (s) {
 		struct unix_sock *u = unix_sk(s);
 
-		if (atomic_read(&u->inflight) == 0) {
+		if (atomic_long_read(&u->inflight) == 0) {
 			if (!list_empty(&u->link)) {
 				pr_warn("unix_inflight: inflight == 0 but link not empty (u=%p)\n", u);
 				WARN_ON_ONCE(1);
@@ -61,10 +61,10 @@ void unix_inflight(struct user_struct *user, struct file *fp)
 		} else {
 			if (WARN_ON_ONCE(list_empty(&u->link)))
 				pr_warn("unix_inflight: inflight > 0 but link is empty (u=%p, inflight=%d)\n",
-				        u, atomic_read(&u->inflight));
+				        u, atomic_long_read(&u->inflight));
 		}
 
-		atomic_inc(&u->inflight);
+		atomic_long_inc(&u->inflight);
 		WRITE_ONCE(unix_tot_inflight, unix_tot_inflight + 1);
 	}
 
@@ -80,7 +80,7 @@ void unix_notinflight(struct user_struct *user, struct file *fp)
 
 	if (s) {
 		struct unix_sock *u = unix_sk(s);
-		int inflight = atomic_read(&u->inflight);
+		int inflight = atomic_long_read(&u->inflight);
 
 		if (WARN_ON_ONCE(inflight == 0)) {
 			pr_warn("unix_notinflight: inflight already 0 (u=%p)\n", u);
@@ -93,8 +93,8 @@ void unix_notinflight(struct user_struct *user, struct file *fp)
 			goto out;
 		}
 
-		atomic_dec(&u->inflight);
-		if (atomic_read(&u->inflight) == 0)
+		atomic_long_dec(&u->inflight);
+		if (atomic_long_read(&u->inflight) == 0)
 			list_del_init(&u->link);
 
 		WRITE_ONCE(unix_tot_inflight, unix_tot_inflight - 1);
