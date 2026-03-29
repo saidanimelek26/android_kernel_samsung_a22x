@@ -67,22 +67,6 @@
 	SET_BIT_MASK(&val, data, mask); \
 	CONSYS_REG_WRITE(reg, val); \
 }
-#define CONSYS_REG_READ_BIT(addr, BITVAL) (CONSYS_REG_READ(addr) & ((unsigned int)(BITVAL)))
-#define CONSYS_REG_BIT_POLLING(addr, bit_index, exp_val, loop, delay, success) {\
-	unsigned int polling_count = 0; \
-	unsigned int reg_value = 0; \
-	success = 0; \
-	reg_value = (CONSYS_REG_READ_BIT(addr, (0x1 << bit_index)) >> bit_index); \
-	while (reg_value != exp_val) { \
-		if (polling_count > loop) { \
-			success = -1; \
-			break; \
-		} \
-		reg_value = (CONSYS_REG_READ_BIT(addr, (0x1 << bit_index)) >> bit_index); \
-		udelay(delay); \
-		polling_count++; \
-	} \
-}
 
 /*
  * Write value with value_offset bits of right shift and size bits,
@@ -184,11 +168,11 @@ enum CONSYS_BASE_ADDRESS_INDEX {
 	INFRACFG_REG_BASE_INDEX,
 };
 
-typedef struct reg_map_addr {
+struct reg_map_addr {
 	UINT32 phy_addr;
 	UINT8 *vir_addr;
 	UINT32 size;
-} REG_MAP_ADDR, *P_REG_MAP_ADDR;
+};
 
 enum consys_dump_action {
 	DUMP_ACT_WRITE = 0,
@@ -294,7 +278,6 @@ typedef VOID(*CONSYS_IC_IDENTIFY_ADIE) (VOID);
 typedef VOID(*CONSYS_IC_WIFI_CTRL_SETTING) (VOID);
 typedef VOID(*CONSYS_IC_WIFI_CTRL_SWITCH_CONN_MODE) (VOID);
 typedef VOID(*CONSYS_IC_BUS_TIMEOUT_CONFIG) (VOID);
-typedef VOID(*CONSYS_IC_SET_MCU_MEM_PDN_DELAY) (VOID);
 typedef VOID(*CONSYS_IC_SET_ACCESS_EMI_HW_MODE) (VOID);
 typedef INT32(*CONSYS_IC_DUMP_GATING_STATE) (P_CONSYS_STATE state);
 typedef INT32(*CONSYS_IC_SLEEP_INFO_ENABLE_CTRL) (UINT32 enable);
@@ -308,17 +291,10 @@ typedef INT32(*CONSYS_IC_CMD_TX_TIMEOUT_DUMP) (VOID);
 typedef INT32(*CONSYS_IC_CMD_RX_TIMEOUT_DUMP) (VOID);
 typedef INT32(*CONSYS_IC_COREDUMP_TIMEOUT_DUMP) (VOID);
 typedef INT32(*CONSYS_IC_ASSERT_TIMEOUT_DUMP) (VOID);
-typedef INT32(*CONSYS_IC_IPI_TIMEOUT_DUMP) (VOID);
 
 typedef INT32(*CONSYS_IC_BEFORE_CHIP_RESET_DUMP) (VOID);
 typedef INT32(*CONSYS_IC_PC_LOG_DUMP) (VOID);
 typedef VOID(*CONSYS_IC_SET_VCN33_1_VOLTAGE) (UINT32 voltage);
-
-typedef INT32(*CONSYS_IC_JTAG_SET_FOR_MCU) (VOID);
-typedef UINT32(*CONSYS_IC_JTAG_FLAG_CTRL) (UINT32 enable);
-#ifdef CONSYS_WMT_REG_SUSPEND_CB_ENABLE
-typedef UINT32(*CONSYS_IC_HW_OSC_EN_CTRL) (UINT32 enable);
-#endif
 
 typedef struct _WMT_CONSYS_IC_OPS_ {
 
@@ -336,7 +312,6 @@ typedef struct _WMT_CONSYS_IC_OPS_ {
 	CONSYS_IC_WIFI_CTRL_SETTING consys_ic_wifi_ctrl_setting;
 	CONSYS_IC_WIFI_CTRL_SWITCH_CONN_MODE consys_ic_wifi_ctrl_switch_conn_mode;
 	CONSYS_IC_BUS_TIMEOUT_CONFIG consys_ic_bus_timeout_config;
-	CONSYS_IC_SET_MCU_MEM_PDN_DELAY consys_ic_set_mcu_mem_pdn_delay;
 
 	/* POS - AFE */
 	CONSYS_IC_AFE_REG_SETTING consys_ic_afe_reg_setting;
@@ -415,7 +390,6 @@ typedef struct _WMT_CONSYS_IC_OPS_ {
 	CONSYS_IC_ASSERT_TIMEOUT_DUMP consys_ic_assert_timeout_dump;
 	CONSYS_IC_BEFORE_CHIP_RESET_DUMP consys_ic_before_chip_reset_dump;
 	CONSYS_IC_PC_LOG_DUMP consys_ic_pc_log_dump;
-	CONSYS_IC_IPI_TIMEOUT_DUMP consys_ic_ipi_timeout_dump;
 
 	/* ant setting */
 	CONSYS_IC_IS_ANT_SWAP_ENABLE_BY_HWID consys_ic_is_ant_swap_enable_by_hwid;
@@ -432,12 +406,6 @@ typedef struct _WMT_CONSYS_IC_OPS_ {
 	CONSYS_IC_GET_OPTIONS consys_ic_get_options;
 	CONSYS_IC_POLLING_GOTO_IDLE consys_ic_polling_goto_idle;
 	CONSYS_IC_SET_VCN33_1_VOLTAGE consys_ic_set_vcn33_1_voltage;
-
-	CONSYS_IC_JTAG_SET_FOR_MCU consys_ic_jtag_set_for_mcu;
-	CONSYS_IC_JTAG_FLAG_CTRL consys_ic_jtag_flag_ctrl;
-#ifdef CONSYS_WMT_REG_SUSPEND_CB_ENABLE
-	CONSYS_IC_HW_OSC_EN_CTRL consys_ic_hw_osc_en_ctrl;
-#endif
 } WMT_CONSYS_IC_OPS, *P_WMT_CONSYS_IC_OPS;
 /*******************************************************************************
 *                            P U B L I C   D A T A
@@ -448,6 +416,8 @@ extern void mt_irq_dump_status(int irq);
 #endif
 extern struct CONSYS_BASE_ADDRESS conn_reg;
 extern UINT32 gCoClockFlag;
+extern EMI_CTRL_STATE_OFFSET mtk_wcn_emi_state_off;
+extern CONSYS_EMI_ADDR_INFO mtk_wcn_emi_addr_info;
 
 extern UINT64 gConEmiSize;
 extern phys_addr_t gConEmiPhyBase;
@@ -535,11 +505,11 @@ INT32 mtk_wcn_consys_coredump_timeout_dump(VOID);
 INT32 mtk_wcn_consys_assert_timeout_dump(VOID);
 INT32 mtk_wnc_consys_before_chip_reset_dump(VOID);
 INT32 mtk_wcn_consys_pc_log_dump(VOID);
-INT32 mtk_wcn_consys_ipi_timeout_dump(VOID);
 
-VOID mtk_wcn_dump_util_init(UINT32 chipid);
 VOID mtk_wcn_dump_util_destroy(VOID);
 
+extern int g_mapped_reg_table_sz;
+extern struct reg_map_addr g_mapped_reg_table[];
 VOID mtk_wcn_consys_set_vcn33_1_voltage(UINT32 voltage);
 #endif /* _MTK_WCN_CONSYS_HW_H_ */
 

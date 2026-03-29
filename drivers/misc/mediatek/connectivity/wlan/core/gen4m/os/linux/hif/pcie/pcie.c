@@ -99,8 +99,6 @@
 #define NIC7915_PCIe_DEVICE_ID	0x7915
 #define NICSOC3_0_PCIe_DEVICE_ID  0x0789
 #define NIC7961_PCIe_DEVICE_ID	0x7961
-#define NICSOC5_0_PCIe_DEVICE_ID  0x0789
-#define NICSOC7_0_PCIe_DEVICE_ID  0x0789
 
 static const struct pci_device_id mtk_pci_ids[] = {
 #ifdef MT6632
@@ -140,14 +138,6 @@ static const struct pci_device_id mtk_pci_ids[] = {
 	{	PCI_DEVICE(MTK_PCI_VENDOR_ID, NIC7961_PCIe_DEVICE_ID),
 		.driver_data = (kernel_ulong_t)&mt66xx_driver_data_mt7961},
 #endif /* MT7961 */
-#ifdef SOC5_0
-	{	PCI_DEVICE(MTK_PCI_VENDOR_ID, NICSOC5_0_PCIe_DEVICE_ID),
-		.driver_data = (kernel_ulong_t)&mt66xx_driver_data_soc5_0},
-#endif /* SOC5_0 */
-#ifdef SOC7_0
-	{	PCI_DEVICE(MTK_PCI_VENDOR_ID, NICSOC7_0_PCIe_DEVICE_ID),
-		.driver_data = (kernel_ulong_t)&mt66xx_driver_data_soc7_0},
-#endif /* SOC7_0 */
 	{ /* end: all zeroes */ },
 };
 
@@ -179,8 +169,6 @@ static struct pci_driver mtk_pci_driver = {
 
 static u_int8_t g_fgDriverProbed = FALSE;
 static uint32_t g_u4DmaMask = 32;
-struct pci_dev *g_prDev;
-static void *CSRBaseAddress;
 /*******************************************************************************
  *                                 M A C R O S
  *******************************************************************************
@@ -248,20 +236,11 @@ static void pcieDumpRx(struct GL_HIF_INFO *prHifInfo,
  * \return void
  */
 /*----------------------------------------------------------------------------*/
-
-static struct mt66xx_hif_driver_data *get_platform_driver_data(void)
-{
-	ASSERT(g_prDev);
-	if (!g_prDev)
-		return NULL;
-
-	return (struct mt66xx_hif_driver_data *) pci_get_drvdata(g_prDev);
-}
+static void *CSRBaseAddress;
 
 static irqreturn_t mtk_pci_interrupt(int irq, void *dev_instance)
 {
 	struct GLUE_INFO *prGlueInfo = NULL;
-	static DEFINE_RATELIMIT_STATE(_rs, 2 * HZ, 1);
 
 	prGlueInfo = (struct GLUE_INFO *) dev_instance;
 	if (!prGlueInfo) {
@@ -271,14 +250,12 @@ static irqreturn_t mtk_pci_interrupt(int irq, void *dev_instance)
 
 	halDisableInterrupt(prGlueInfo->prAdapter);
 
-	if (test_bit(GLUE_FLAG_HALT_BIT, &prGlueInfo->ulFlag)) {
+	if (prGlueInfo->ulFlag & GLUE_FLAG_HALT) {
 		DBGLOG(HAL, INFO, "GLUE_FLAG_HALT skip INT\n");
 		return IRQ_NONE;
 	}
 
 	kalSetIntEvent(prGlueInfo);
-	if (__ratelimit(&_rs))
-		pr_info("[wlan] In HIF ISR.\n");
 
 	return IRQ_HANDLED;
 }
@@ -308,14 +285,17 @@ static int mtk_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto out;
 	}
 
+#if defined(SOC3_0)
+	if ((void *)&mt66xx_driver_data_soc3_0 == (void *)id->driver_data)
+		DBGLOG(INIT, INFO,
+			"[MJ]&mt66xx_driver_data_soc3_0 == id->driver_data\n");
+#endif
+
 	DBGLOG(INIT, INFO, "pci_enable_device done!\n");
 
 	prChipInfo = ((struct mt66xx_hif_driver_data *)
 				id->driver_data)->chip_info;
-	g_prDev = pdev;
 	prChipInfo->pdev = (void *)pdev;
-
-	pci_set_drvdata(pdev, (void *)id->driver_data)
 
 #if (CFG_POWER_ON_DOWNLOAD_EMI_ROM_PATCH == 1)
 		g_fgDriverProbed = TRUE;
@@ -348,8 +328,6 @@ static void mtk_pci_remove(struct pci_dev *pdev)
 
 	/* Unmap CSR base address */
 	iounmap(CSRBaseAddress);
-
-	pci_set_drvdata(pdev, NULL)
 
 	/* release memory region */
 	pci_release_regions(pdev);
@@ -658,17 +636,6 @@ void glGetDev(void *ctx, struct device **dev)
 void glGetHifDev(struct GL_HIF_INFO *prHif, struct device **dev)
 {
 	*dev = &(prHif->pdev->dev);
-}
-
-void glGetChipInfo(void **prChipInfo)
-{
-	struct mt66xx_hif_driver_data *prDriverData;
-
-	prDriverData = get_platform_driver_data();
-	if (!prDriverData)
-		return;
-
-	*prChipInfo = (void *)prDriverData->chip_info;
 }
 
 static void pcieAllocDesc(struct GL_HIF_INFO *prHifInfo,

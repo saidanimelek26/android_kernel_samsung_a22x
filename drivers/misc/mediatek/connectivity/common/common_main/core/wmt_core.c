@@ -1115,7 +1115,6 @@ static INT32 wmt_core_hw_check(VOID)
 	case 0x6779:
 	case 0x6768:
 	case 0x6785:
-	case 0x6781:
 	case 0x6833:
 	case 0x6853:
 	case 0x6873:
@@ -1217,7 +1216,7 @@ static INT32 opfunc_pwr_on(P_WMT_OP pWmtOp)
 	if (iRet) {
 		WMT_ERR_FUNC("WMT-CORE: wmt_core_stp_init fail (%d)\n", iRet);
 		osal_assert(0);
-		if (mtk_wcn_stp_assert_flow_get() == 0) {
+		if (mtk_wcn_stp_get_wmt_trg_assert() == 0) {
 			iErrHandle = wmt_core_stp_deinit();
 			if (iErrHandle)
 				WMT_ERR_FUNC("wmt_core_stp_deinit() failed, Err=%d\n", iErrHandle);
@@ -3834,8 +3833,7 @@ INT32 opfunc_dump_pc_log(P_WMT_OP pWmtOp)
 		WMT_INFO_FUNC("WMT is not on");
 		return -1;
 	}
-	if (wmt_detect_get_chip_type() == WMT_CHIP_TYPE_SOC)
-		mtk_wcn_consys_pc_log_dump();
+	mtk_wcn_consys_pc_log_dump();
 
 	return 0;
 }

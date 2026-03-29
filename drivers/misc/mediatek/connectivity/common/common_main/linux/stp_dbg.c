@@ -1454,7 +1454,7 @@ static _osal_inline_ INT32 stp_dbg_fill_hdr(STP_DBG_HDR_T *hdr, INT32 type, INT3
 			      INT32 crc, INT32 dir, INT32 len, INT32 dbg_type)
 {
 
-	struct timespec64 now;
+	struct timeval now;
 	UINT64 ts;
 	ULONG nsec;
 
@@ -1471,7 +1471,7 @@ static _osal_inline_ INT32 stp_dbg_fill_hdr(STP_DBG_HDR_T *hdr, INT32 type, INT3
 	hdr->ack = ack;
 	hdr->seq = seq;
 	hdr->sec = now.tv_sec;
-	hdr->usec = now.tv_nsec / NSEC_PER_USEC;
+	hdr->usec = now.tv_usec;
 	hdr->crc = crc;
 	hdr->dir = dir;	/* rx */
 	hdr->dmy = 0xffffffff;
@@ -2197,7 +2197,7 @@ INT32 stp_dbg_set_fw_info(PUINT8 issue_info, UINT32 len, ENUM_STP_FW_ISSUE_TYPE 
 		return -1;
 	}
 
-	if (g_stp_dbg_cpupcr->issue_type != STP_FW_ISSUE_TYPE_INVALID &&
+	if (g_stp_dbg_cpupcr->issue_type &&
 	    g_stp_dbg_cpupcr->issue_type != STP_HOST_TRIGGER_COLLECT_FTRACE) {
 		STP_DBG_PR_ERR("assert information has been set up\n");
 		return -1;

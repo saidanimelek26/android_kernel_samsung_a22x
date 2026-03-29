@@ -104,19 +104,11 @@
 #define CONNAC2X_WFDMA_DUMMY_CR		(CONNAC2X_MCU_WPDMA_0_BASE + 0x120)
 #define CONNAC2X_WFDMA_NEED_REINIT_BIT	BIT(1)
 
-#define CONNAC2x_CONN_CFG_ON_BASE	0x7C060000
-#define CONNAC2x_CONN_CFG_ON_CONN_ON_MISC_ADDR \
-	(CONNAC2x_CONN_CFG_ON_BASE + 0xF0)
-#define CONNAC2x_CONN_CFG_ON_CONN_ON_MISC_DRV_FM_STAT_SYNC_SHFT         0
-
-#define WFSYS_CPUPCR_ADDR (CONNAC2x_CONN_CFG_ON_BASE + 0x0204)
-#define WFSYS_LP_ADDR (CONNAC2x_CONN_CFG_ON_BASE + 0x0208)
-
 #if defined(_HIF_PCIE) || defined(_HIF_AXI)
 #define CONNAC2X_CONN_HIF_ON_ADDR_REMAP23              0x7010
 #define CONNAC2X_HOST_EXT_CONN_HIF_WRAP                0x7c027000
 #define CONNAC2X_MCU_INT_CONN_HIF_WRAP                 0x57000000
-#define CONNAC2X_MAX_WFDMA_COUNT                       2
+#define CONNAC2X_WFDMA_COUNT                           2
 
 /*******************************************************************************
 *                              C O N S T A N T S
@@ -209,7 +201,6 @@
 #define CONNAC2X_BN0_LPCTL_ADDR        (CONNAC2X_HOST_CSR_TOP_BASE + 0x10)
 #define CONNAC2X_BN0_IRQ_STAT_ADDR     (CONNAC2X_HOST_CSR_TOP_BASE + 0x14)
 #define CONNAC2X_BN0_IRQ_ENA_ADDR      (CONNAC2X_HOST_CSR_TOP_BASE + 0x18)
-#define CONNAC2X_MAILBOX_DBG_ADDR      (0x18060260)
 
 #endif /* _HIF_PCIE || _HIF_AXI */
 
@@ -247,8 +238,6 @@
 
 #define CONNAC2X_LEN_USB_RX_PADDING_CSO          (4)	/*HW design spec */
 #endif /* _HIF_USB */
-
-#define CONN_INFRA_CFG_AP2WF_BUS_ADDR                          0x7C500000
 
 /*------------------------------------------------------------------------*/
 /* Rx descriptor field related information                                */
@@ -319,13 +308,6 @@
 	((_key_loc & 0x7F) << 6) | (_DW & 0xF) << 2)
 
 /*------------------------------------------------------------------------------
- * MACRO for decision of RXV source (RXD or RX_RPT)
- *------------------------------------------------------------------------------
- */
-#define CONNAC2X_RXV_FROM_RX_RPT(_prAdapter)	\
-	((_prAdapter)->chip_info->get_rxv_from_rxrpt)
-
-/*------------------------------------------------------------------------------
  * MACRO for CONNAC2X RXVECTOR Parsing
  *------------------------------------------------------------------------------
  */
@@ -360,22 +342,6 @@
 
 #define CONNAC2X_HAL_RX_VECTOR_GET_RX_VECTOR(_prHwRxVector, _ucIdx) \
 	((_prHwRxVector)->u4RxVector[_ucIdx])
-
-#define CONNAC2X_HAL_RXV_GET_RCPI0_RXRPT(_RxvDw6)	\
-	(((_RxvDw6) & CONNAC2X_RX_VT_RCPI0_MASK) >> CONNAC2X_RX_VT_RCPI0_OFFSET)
-
-#define CONNAC2X_HAL_RXV_GET_RCPI1_RXRPT(_RxvDw6)	\
-	(((_RxvDw6) & CONNAC2X_RX_VT_RCPI1_MASK) >> CONNAC2X_RX_VT_RCPI1_OFFSET)
-
-#define CONNAC2X_HAL_RXV_GET_RCPI2_RXRPT(_RxvDw6)	\
-	(((_RxvDw6) & CONNAC2X_RX_VT_RCPI2_MASK) >> CONNAC2X_RX_VT_RCPI2_OFFSET)
-
-#define CONNAC2X_HAL_RXV_GET_RCPI3_RXRPT(_RxvDw6)	\
-	(((_RxvDw6) & CONNAC2X_RX_VT_RCPI3_MASK) >> CONNAC2X_RX_VT_RCPI3_OFFSET)
-
-#define CONNAC2X_HAL_RXV_GET_NUM_RX_RXRPT(_RxvDw2)	\
-	(((_RxvDw2) & CONNAC2X_RX_VT_NUM_RX_MASK) >>	\
-	CONNAC2X_RX_VT_NUM_RX_OFFSET)
 
 
 #if defined(_HIF_PCIE) || defined(_HIF_AXI)
@@ -1039,26 +1005,6 @@ struct fwtbl_umac_struct {
 	struct wtbl_key_tb key_tb;
 };
 
-enum {
-	SW_INT_FW_LOG = 0,
-	SW_INT_SUBSYS_RESET,
-	SW_INT_WHOLE_RESET,
-	SW_INT_SW_WFDMA,
-	SW_INT_TIME_SYNC,
-};
-
-#if (CFG_SUPPORT_CONNINFRA == 1)
-extern u_int8_t g_IsWfsysBusHang;
-extern struct completion g_triggerComp;
-extern u_int8_t fgIsResetting;
-extern u_int8_t g_fgRstRecover;
-extern struct regmap *g_regmap;
-#if (CFG_ANDORID_CONNINFRA_COREDUMP_SUPPORT == 1)
-extern u_int8_t g_IsNeedWaitCoredump;
-#endif
-#endif
-
-
 /*******************************************************************************
 *                  F U N C T I O N   D E C L A R A T I O N S
 ********************************************************************************
@@ -1099,14 +1045,6 @@ uint8_t asicConnac2xWfdmaWaitIdle(
 	uint8_t index,
 	uint32_t round,
 	uint32_t wait_us);
-void asicConnac2xWfdmaTxRingBasePtrExtCtrl(
-	struct GLUE_INFO *prGlueInfo,
-	struct RTMP_TX_RING *tx_ring,
-	u_int32_t index);
-void asicConnac2xWfdmaRxRingBasePtrExtCtrl(
-	struct GLUE_INFO *prGlueInfo,
-	struct RTMP_RX_RING *rx_ring,
-	u_int32_t index);
 void asicConnac2xWfdmaTxRingExtCtrl(
 	struct GLUE_INFO *prGlueInfo,
 	struct RTMP_TX_RING *tx_ring,
@@ -1120,8 +1058,6 @@ void asicConnac2xWfdmaManualPrefetch(
 void asicConnac2xEnablePlatformIRQ(
 	struct ADAPTER *prAdapter);
 void asicConnac2xDisablePlatformIRQ(
-	struct ADAPTER *prAdapter);
-void asicConnac2xDisablePlatformSwIRQ(
 	struct ADAPTER *prAdapter);
 void asicConnac2xEnableExtInterrupt(
 	struct ADAPTER *prAdapter);
@@ -1268,67 +1204,6 @@ u_int32_t asic_connac2x_show_rx_rssi_info(
 	char *pcCommand,
 	int32_t i4TotalLen,
 	uint8_t ucStaIdx);
-void asicConnac2xWfdmaControl(
-	struct GLUE_INFO *prGlueInfo,
-	u_int8_t ucDmaIdx,
-	u_int8_t enable);
-
-#if (CFG_DOWNLOAD_DYN_MEMORY_MAP == 1)
-uint32_t downloadImgByDynMemMap(IN struct ADAPTER *prAdapter,
-	IN uint32_t u4Addr, IN uint32_t u4Len,
-	IN uint8_t *pucStartPtr, IN enum ENUM_IMG_DL_IDX_T eDlIdx);
-#endif
-
-void asicConnac2xDmashdlSetPlePktMaxPage(
-	struct ADAPTER *prAdapter,
-	uint16_t u2MaxPage);
-void asicConnac2xDmashdlSetPsePktMaxPage(
-	struct ADAPTER *prAdapter,
-	uint16_t u2MaxPage);
-void asicConnac2xDmashdlSetRefill(
-	struct ADAPTER *prAdapter,
-	uint8_t ucGroup,
-	u_int8_t fgEnable);
-void asicConnac2xDmashdlSetMaxQuota(
-	struct ADAPTER *prAdapter,
-	uint8_t ucGroup,
-	uint16_t u2MaxQuota);
-void asicConnac2xDmashdlSetMinQuota(
-	struct ADAPTER *prAdatper,
-	uint8_t ucGroup,
-	uint16_t u2MinQuota);
-void asicConnac2xDmashdlSetQueueMapping(
-	struct ADAPTER *prAdapter,
-	uint8_t ucQueue,
-	uint8_t ucGroup);
-void asicConnac2xDmashdlGetPktMaxPage(struct ADAPTER *prAdapter);
-void asicConnac2xDmashdlGetRefill(struct ADAPTER *prAdapter);
-void asicConnac2xDmashdlGetGroupControl(
-	struct ADAPTER *prAdapter,
-	uint8_t ucGroup);
-void asicConnac2xDmashdlSetSlotArbiter(
-	struct ADAPTER *prAdapter,
-	u_int8_t fgEnable);
-void asicConnac2xDmashdlSetUserDefinedPriority(
-	struct ADAPTER *prAdapter,
-	uint8_t ucPriority,
-	uint8_t ucGroup);
-uint32_t asicConnac2xDmashdlGetRsvCount(
-	struct ADAPTER *prAdapter,
-	uint8_t ucGroup);
-uint32_t asicConnac2xDmashdlGetSrcCount(
-	struct ADAPTER *prAdapter,
-	uint8_t ucGroup);
-void asicConnac2xDmashdlGetPKTCount(
-	struct ADAPTER *prAdapter,
-	uint8_t ucGroup);
-void asicConnac2xDmashdlSetOptionalControl(
-	struct ADAPTER *prAdapter,
-	uint16_t u2HifAckCntTh,
-	uint16_t u2HifGupActMap);
-bool asicConnac2xSwIntHandler(struct ADAPTER *prAdapter);
-int asicConnac2xPwrOnWmMcu(struct mt66xx_chip_info *chip_info);
-int asicConnac2xPwrOffWmMcu(struct mt66xx_chip_info *chip_info);
 #endif /* CFG_SUPPORT_CONNAC2X == 1 */
 #endif /* _CMM_ASIC_CONNAC2X_H */
 

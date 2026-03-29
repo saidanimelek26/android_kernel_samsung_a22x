@@ -106,7 +106,6 @@ static struct assert_work_st wmt_assert_work;
 
 static INT32 g_bt_no_acl_link = 1;
 static INT32 g_bt_no_br_acl_link = 1;
-static atomic_t g_AdieWorkable = ATOMIC_INIT(1);
 
 #define CONSYS_MET_WAIT	(1000*10) /* ms */
 #define MET_DUMP_MAX_NUM (1)
@@ -1087,13 +1086,13 @@ static INT32 wmt_lib_is_bt_able_to_reset(VOID)
 	if (g_bt_no_acl_link)
 		return 1;
 	else if (g_bt_no_br_acl_link) {
-		struct timespec64 time;
+		struct timeval time;
 		ULONG local_time;
 		struct rtc_time tm;
 
 		osal_do_gettimeofday(&time);
 		local_time = (ULONG)(time.tv_sec - (sys_tz.tz_minuteswest * 60));
-		rtc_time64_to_tm(local_time, &tm);
+		rtc_time_to_tm(local_time, &tm);
 		if (tm.tm_hour == 2)
 			return 1;
 	}
@@ -1339,7 +1338,7 @@ static INT32 met_thread(void *pvData)
 	}
 	osal_memset(met_dump_buf, 0, MET_DUMP_SIZE);
 
-	emi_met_base = ioremap(emi_info->emi_ap_phy_addr + emi_met_offset, emi_met_size);
+	emi_met_base = ioremap_nocache(emi_info->emi_ap_phy_addr + emi_met_offset, emi_met_size);
 	if (!emi_met_base) {
 		osal_free(met_dump_buf);
 		WMT_ERR_FUNC("met emi ioremap fail\n");
@@ -1803,15 +1802,6 @@ UINT32 wmt_lib_get_icinfo(ENUM_WMT_CHIPINFO_TYPE_T index)
 
 }
 
-UINT32 wmt_lib_get_adie_workable(VOID)
-{
-	return atomic_read(&g_AdieWorkable);
-}
-
-VOID wmt_lib_set_adie_workable(UINT32 workable)
-{
-	atomic_set(&g_AdieWorkable, ((workable > 0) ? 1 : 0));
-}
 
 PUINT8 wmt_lib_def_patch_name(VOID)
 {

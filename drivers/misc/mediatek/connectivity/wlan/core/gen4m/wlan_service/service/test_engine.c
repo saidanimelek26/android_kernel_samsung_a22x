@@ -1444,15 +1444,8 @@ static u_int32 mt_engine_add_allocation(
 
 	sub_band_idx = mt_engine_get_sub_band(ru_index) + seg*4;
 
-	if ((sub_band_idx > 4) || (sub_band_idx < 0)) {
-		SERV_LOG(SERV_DBG_CAT_ENGN, SERV_DBG_LVL_TRACE,
-		("%s: idx is invaild:%d\n ",
-		__func__, sub_band_idx));
-
-		sys_ad_set_mem(&alloc_info->sub20[0], 8, 0x72);
-
+	if (sub_band_idx > 7)
 		return SERV_STATUS_ENGINE_INVALID_PARAM;
-	}
 
 	SERV_LOG(SERV_DBG_CAT_ENGN, SERV_DBG_LVL_TRACE,
 		("%s: ru index:%d (%d), ",
@@ -1470,19 +1463,28 @@ static u_int32 mt_engine_add_allocation(
 				/* D3.1, Table 28-24, 0xc8 is 484-tone
 				 * D3.1, Table 28-24, 0x72 is 484-empty-tone
 				 */
-				 alloc_info->
+				 if (((sub_band_idx+1) >= 0)
+					&& ((sub_band_idx+1) < 8))
+					alloc_info->
 						sub20[sub_band_idx+1] = 0x72;
+				 else
+					return SERV_STATUS_ENGINE_INVALID_PARAM;
 
 			} else if (allocation == 0xd0) {
 				/* D3.1, Table 28-24, 0xd0 is 996-tone
 				 * D3.1, Table 28-24, 0x73 is 484-empty-tone
 				 */
-				alloc_info->
-					sub20[sub_band_idx+1] = 0x73;
-				alloc_info->
-					sub20[sub_band_idx+2] = 0x73;
-				alloc_info->
-					sub20[sub_band_idx+3] = 0x73;
+				if (((sub_band_idx+1) >= 0)
+					&& ((sub_band_idx+3) < 8)) {
+					alloc_info->
+						sub20[sub_band_idx+1] = 0x73;
+					alloc_info->
+						sub20[sub_band_idx+2] = 0x73;
+					alloc_info->
+						sub20[sub_band_idx+3] = 0x73;
+				} else
+					return SERV_STATUS_ENGINE_INVALID_PARAM;
+
 			}
 		}
 	}

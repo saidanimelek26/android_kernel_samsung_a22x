@@ -179,7 +179,8 @@ extern const uint8_t *apucACI2Str[4];
  *   Indeed, even if network subqueue is not stopped when no MSDU resource, the
  *   new arriving skb will be queued in prGlueInfo->rTxQueue and not be dropped.
  */
-#define QM_FWD_PKT_QUE_THRESHOLD            (CFG_TX_MAX_PKT_NUM >> 1)
+#define QM_FWD_PKT_QUE_THRESHOLD \
+	(CFG_TX_MAX_PKT_NUM - 2 * CFG_TX_STOP_NETIF_PER_QUEUE_THRESHOLD)
 
 /* 1 WMM-related */
 /* WMM FLAGS */
@@ -348,21 +349,12 @@ enum ENUM_MAC_TX_QUEUE_INDEX {
 	MAC_TX_QUEUE_NUM
 };
 
-#define SEQ_SMALLER(_SEQ1, _SEQ2) (((_SEQ1-_SEQ2) & ((MAX_SEQ_NO_COUNT) >> 1)))
-#define BAR_SSN_IS_VALID   BIT(15)
-#define IS_BAR_SSN_VALID(_prBaSsnEntry)  ((_prBaSsnEntry) & BAR_SSN_IS_VALID)
-#define CLR_BAR_SSN_VALID(_prBaSsnEntry) ((_prBaSsnEntry) &= ~BAR_SSN_IS_VALID)
-#define SET_BAR_SSN_VALID(_prBaSsnEntry) ((_prBaSsnEntry) |= BAR_SSN_IS_VALID)
-
 struct RX_BA_ENTRY {
 	u_int8_t fgIsValid;
 	struct QUE rReOrderQue;
 	uint16_t u2WinStart;
 	uint16_t u2WinEnd;
 	uint16_t u2WinSize;
-	uint16_t u2BarSSN;
-	uint16_t u2LastRcvdSN;
-	uint16_t u2LastFallBehindDropSN;
 
 	/* For identifying the RX BA agreement */
 	uint8_t ucStaRecIdx;
@@ -751,14 +743,12 @@ struct _CMD_MQM_UPDATE_MU_EDCA_PARMS_T {
 
 struct CMD_TX_AMPDU {
 	u_int8_t fgEnable;
-	u_int8_t fgApply;
-	uint8_t aucReserved[2];
+	uint8_t aucReserved[3];
 };
 
 struct CMD_ADDBA_REJECT {
 	u_int8_t fgEnable;
-	u_int8_t fgApply;
-	uint8_t aucReserved[2];
+	uint8_t aucReserved[3];
 };
 
 #if CFG_M0VE_BA_TO_DRIVER
@@ -987,11 +977,6 @@ uint32_t qmDequeueTxPacketsFromGlobalQueue(IN struct ADAPTER
 	IN uint32_t
 	*prPleCurrentQuota, IN uint32_t u4TotalQuota);
 
-#if CFG_SUPPORT_NAN
-void qmUpdateFreeNANQouta(IN struct ADAPTER *prAdapter,
-			  struct EVENT_UPDATE_NAN_TX_STATUS *prTxStatus);
-#endif
-
 void qmSetStaRecTxAllowed(IN struct ADAPTER *prAdapter,
 	IN struct STA_RECORD *prStaRec, IN u_int8_t fgIsTxAllowed);
 
@@ -1027,10 +1012,6 @@ void qmProcessPktWithReordering(IN struct ADAPTER
 
 void qmProcessBarFrame(IN struct ADAPTER *prAdapter,
 	IN struct SW_RFB *prSwRfb, OUT struct QUE *prReturnedQue);
-
-void qmHandleRxReorderWinShift(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucStaRecIdx, uint8_t ucTid, uint32_t u4SSN,
-	OUT struct QUE *prReturnedQue);
 
 void qmInsertReorderPkt(IN struct ADAPTER *prAdapter,
 			IN struct SW_RFB *prSwRfb,
@@ -1230,28 +1211,10 @@ void qmHandleRxArpPackets(struct ADAPTER *prAdapter,
 void qmHandleRxDhcpPackets(struct ADAPTER *prAdapter,
 			   struct SW_RFB *prSwRfb);
 #endif
-
-#if defined(CFG_SUPPORT_REPLAY_DETECTION) || \
-	defined(CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION)
-#define CCMPTSCPNNUM	6
-u_int8_t qmRxPNtoU64(uint8_t *pucPN, uint8_t uPNNum,
-	uint64_t *pu64Rets);
-#endif
-
 #ifdef CFG_SUPPORT_REPLAY_DETECTION
 u_int8_t qmHandleRxReplay(struct ADAPTER *prAdapter,
 			  struct SW_RFB *prSwRfb);
 #endif
-
-#if CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION
-u_int8_t qmDetectRxInvalidEAPOL(IN struct ADAPTER *prAdapter,
-	IN struct SW_RFB *prSwRfb);
-#endif /* CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION */
-
-#if CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION
-u_int8_t qmAmsduAttackDetection(IN struct ADAPTER *prAdapter,
-	IN struct SW_RFB *prSwRfb);
-#endif /* CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION */
 
 u_int8_t
 qmIsNoDropPacket(IN struct ADAPTER *prAdapter, IN struct SW_RFB *prSwRfb);
@@ -1261,9 +1224,8 @@ void qmMoveStaTxQueue(struct STA_RECORD *prSrcStaRec,
 void qmHandleDelTspec(struct ADAPTER *prAdapter, struct STA_RECORD *prStaRec,
 		      enum ENUM_ACI eAci);
 void qmReleaseCHAtFinishedDhcp(struct ADAPTER *prAdapter,
+			       struct TIMER *prTimer,
 			       uint8_t ucBssIndex);
-void qmCheckRxEAPOLM3(IN struct ADAPTER *prAdapter,
-			IN struct SW_RFB *prSwRfb, uint8_t ucBssIndex);
 /*******************************************************************************
  *                              F U N C T I O N S
  *******************************************************************************

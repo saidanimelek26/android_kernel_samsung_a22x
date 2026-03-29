@@ -23,6 +23,10 @@
 
 #define GPS_HW_SUSPEND_SUPPORT
 #endif /* GPS_FWCTL_SUPPORT */
+struct boot_time_info {
+	int64_t now_time;
+	int64_t arch_counter;
+};
 
 enum gps_ctrl_status_enum {
 	GPS_CLOSED,
