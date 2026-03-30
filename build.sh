@@ -47,7 +47,7 @@ LOG_FILE="$OUTPUT_DIR/build.log"
 
 # Toolchain
 CLANG_DIR="$SCRIPT_DIR/clang"
-CLANG_URL="https://github.com/rufnx/clang_aosp/releases/download/clang-r596125/clang-r596125.tar.gz"
+CLANG_URL="https://github.com/greenforce-project/greenforce_clang/releases/download/20260321/gf-clang-23.0.0-20260321.tar.gz"
 
 # AnyKernel3
 ANYKERNEL_DIR="$SCRIPT_DIR/AnyKernel3"
