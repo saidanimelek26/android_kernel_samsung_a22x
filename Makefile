@@ -318,7 +318,7 @@ SUBARCH := $(shell uname -m | sed -e s/i.86/x86/ -e s/x86_64/x86/ \
 # Default value for CROSS_COMPILE is not to prefix executables
 # Note: Some architectures assign CROSS_COMPILE in their arch/*/Makefile
 ARCH            ?= arm64
-# CROSS_COMPILE   ?= $(srctree)/toolchain/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-androidkernel-
+CROSS_COMPILE   ?= aarch64-linux-gnu-
 
 # Architecture as present in compile.h
 UTS_MACHINE 	:= $(ARCH)
@@ -377,17 +377,15 @@ HOSTLDFLAGS  := $(HOST_LFS_LDFLAGS)
 HOST_LOADLIBES := $(HOST_LFS_LIBS)
 
 # Make variables (CC, etc...)
-AS		= $(CROSS_COMPILE)as
-LD		= $(CROSS_COMPILE)ld
-LDGOLD		= $(CROSS_COMPILE)ld.gold
-#CC		= $(srctree)/toolchain/clang/host/linux-x86/clang-r383902/bin/clang
-CPP		?= $(CC) -E
-AR		?= $(CROSS_COMPILE)ar
-NM		?= $(CROSS_COMPILE)nm
-STRIP		?= $(CROSS_COMPILE)strip
-OBJCOPY		?= $(CROSS_COMPILE)objcopy
-OBJDUMP		?= $(CROSS_COMPILE)objdump
-READELF		= $(CROSS_COMPILE)readelf
+LD		= ld.lld
+CC		= clang
+CPP		= $(CC) -E
+AR		= llvm-ar
+NM		= llvm-nm
+STRIP		= llvm-strip
+OBJCOPY		= llvm-objcopy
+OBJDUMP		= llvm-objdump
+READELF		= llvm-readelf
 endif
 PAHOLE		= pahole
 AWK		= awk
