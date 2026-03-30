@@ -16,8 +16,8 @@
 
 TOP := $(srctree)
 ifeq ($(TARGET_BUILD_VARIANT),)
-$(info --------------------rufnx)
 TARGET_BUILD_VARIANT := user
+$(info TARGET_BUILD_VARIANT: $(TARGET_BUILD_VARIANT))
 endif
 
 subdir-ccflags-y += -I$(srctree)/
@@ -48,7 +48,6 @@ $(MODULE_NAME)-objs += power_throttling/adapter.o
 $(MODULE_NAME)-objs += power_throttling/core.o
 $(MODULE_NAME)-objs += power_throttling/test.o
 
-$(info --------------------)
 $(info $$CONFIG_MTK_COMBO_CHIP is [${CONFIG_MTK_COMBO_CHIP}])
 MTK_PLATFORM_ID := $(patsubst CONSYS_%,%,$(subst ",,$(CONFIG_MTK_COMBO_CHIP)))
 $(info MTK_PLATFORM_ID is [${MTK_PLATFORM_ID}])
@@ -93,7 +92,6 @@ else
 $(info WIFI_IP_SET is 1)
 export WIFI_IP_SET=1
 endif
-$(info --------------------)
 
 # Do build-in for xxx.c checking
 subdir-ccflags-y += -D MTK_WCN_REMOVE_KERNEL_MODULE
