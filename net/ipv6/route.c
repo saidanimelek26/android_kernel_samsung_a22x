@@ -2622,7 +2622,7 @@ struct rt6_info *rt6_get_dflt_router_expires(struct net_device *dev)
 	if (!table)
 		return NULL;
 
-	read_lock_bh(&table->tb6_lock);
+	spin_lock_bh(&table->tb6_lock);
 	for (fb = table->tb6_root.leaf; fb; fb = fb->fib6_next) {
 		if (dev == rt->dst.dev &&
 		    ((rt->rt6i_flags & RTF_ADGE) == RTF_ADGE))
@@ -2630,7 +2630,7 @@ struct rt6_info *rt6_get_dflt_router_expires(struct net_device *dev)
 	}
 	if (rt)
 		dst_hold(&rt->dst);
-	read_unlock_bh(&table->tb6_lock);
+	spin_unlock_bh(&table->tb6_lock);
 	return rt;
 }
 
