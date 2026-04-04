@@ -63,6 +63,7 @@ struct fsverity_info;
 struct fsverity_operations;
 struct fs_context;
 struct fs_parameter_description;
+struct wait_page_queue;
 
 extern void __init inode_init(void);
 extern void __init inode_init_early(void);
@@ -163,6 +164,9 @@ typedef int (dio_iodone_t)(struct kiocb *iocb, loff_t offset,
 
 /* File represents mount that needs unmounting */
 #define FMODE_NEED_UNMOUNT	((__force fmode_t)0x10000000)
+
+/* File supports async buffered reads */
+#define FMODE_BUF_RASYNC	((__force fmode_t)0x40000000)
 
 /*
  * Flag for rw_copy_check_uvector and compat_rw_copy_check_uvector
@@ -295,14 +299,22 @@ enum rw_hint {
 	WRITE_LIFE_EXTREME	= RWH_WRITE_LIFE_EXTREME,
 };
 
-#define IOCB_EVENTFD		(1 << 0)
-#define IOCB_APPEND		(1 << 1)
-#define IOCB_DIRECT		(1 << 2)
-#define IOCB_HIPRI		(1 << 3)
-#define IOCB_DSYNC		(1 << 4)
-#define IOCB_SYNC		(1 << 5)
-#define IOCB_WRITE		(1 << 6)
-#define IOCB_NOWAIT		(1 << 7)
+/* Match RWF_* bits to IOCB bits */
+#define IOCB_HIPRI		(__force int) RWF_HIPRI
+#define IOCB_DSYNC		(__force int) RWF_DSYNC
+#define IOCB_SYNC		(__force int) RWF_SYNC
+#define IOCB_NOWAIT		(__force int) RWF_NOWAIT
+#define IOCB_APPEND		(__force int) RWF_APPEND
+
+/* non-RWF related bits - start at 16 */
+#define IOCB_EVENTFD		(1 << 16)
+#define IOCB_DIRECT		(1 << 17)
+#define IOCB_WRITE		(1 << 18)
+/* iocb->ki_waitq is valid */
+#define IOCB_WAITQ		(1 << 19)
+#define IOCB_NOIO		(1 << 20)
+/* can use bio alloc cache */
+#define IOCB_ALLOC_CACHE	(1 << 21)
 /* kiocb is a read or write operation submitted by fs/aio.c. */
 #define IOCB_AIO_RW		(1 << 23)
 
@@ -313,6 +325,11 @@ struct kiocb {
 	void			*private;
 	int			ki_flags;
 	enum rw_hint		ki_hint;
+	u16			ki_ioprio;
+	union {
+		unsigned int		ki_cookie;
+		struct wait_page_queue	*ki_waitq;
+	};
 } __randomize_layout;
 
 static inline bool is_sync_kiocb(struct kiocb *kiocb)
@@ -1775,6 +1792,7 @@ struct file_operations {
 			u64);
 	ssize_t (*dedupe_file_range)(struct file *, u64, u64, struct file *,
 			u64);
+	int (*iopoll)(struct kiocb *kiocb, bool spin);
 } __randomize_layout;
 
 struct inode_operations {
@@ -3024,8 +3042,8 @@ extern int nonseekable_open(struct inode * inode, struct file * filp);
 extern int stream_open(struct inode * inode, struct file * filp);
 
 #ifdef CONFIG_BLOCK
-typedef void (dio_submit_t)(struct bio *bio, struct inode *inode,
-			    loff_t file_offset);
+typedef unsigned int (dio_submit_t)(struct bio *bio, struct inode *inode,
+				    loff_t file_offset);
 
 enum {
 	/* need locking between buffered and direct access */
@@ -3043,6 +3061,7 @@ enum {
 
 void dio_end_io(struct bio *bio);
 void dio_warn_stale_pagecache(struct file *filp);
+int iocb_bio_iopoll(struct kiocb *kiocb, bool spin);
 
 ssize_t __blockdev_direct_IO(struct kiocb *iocb, struct inode *inode,
 			     struct block_device *bdev, struct iov_iter *iter,
