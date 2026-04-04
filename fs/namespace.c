@@ -52,6 +52,14 @@ static unsigned int mp_hash_mask __read_mostly;
 static unsigned int mp_hash_shift __read_mostly;
 
 static __initdata unsigned long mhash_entries;
+static int attach_recursive_mnt(struct mount *source_mnt,
+			struct mount *dest_mnt,
+			struct mountpoint *dest_mp,
+			struct path *parent_path);
+static struct mountpoint *lock_mount(struct path *path);
+static void unlock_mount(struct mountpoint *where);
+static bool mount_too_revealing(struct vfsmount *mnt, int *new_mnt_flags);
+
 static int __init set_mhash_entries(char *str)
 {
 	if (!str)
@@ -3178,7 +3186,35 @@ unlock:
 	return err;
 }
 
-static bool mount_too_revealing(struct vfsmount *mnt, int *new_mnt_flags);
+#ifdef CONFIG_KDP_NS
+static void rkp_populate_sb(char *mount_point, struct vfsmount *mnt)
+{
+	if (!mount_point || !mnt)
+		return;
+
+	if (!odm_sb &&
+		!strncmp(mount_point, KDP_MOUNT_PRODUCT, KDP_MOUNT_PRODUCT_LEN)) {
+		uh_call(UH_APP_RKP, RKP_KDP_X56, (u64)&odm_sb, (u64)mnt, KDP_SB_ODM, 0);
+	} else if (!sys_sb &&
+		!strncmp(mount_point, KDP_MOUNT_SYSTEM, KDP_MOUNT_SYSTEM_LEN)) {
+		uh_call(UH_APP_RKP, RKP_KDP_X56, (u64)&sys_sb, (u64)mnt, KDP_SB_SYS, 0);
+	} else if (!sys_sb &&
+		!strncmp(mount_point, KDP_MOUNT_SYSTEM2, KDP_MOUNT_SYSTEM2_LEN)) {
+		uh_call(UH_APP_RKP, RKP_KDP_X56, (u64)&sys_sb, (u64)mnt, KDP_SB_SYS, 0);
+	} else if (!vendor_sb &&
+		!strncmp(mount_point, KDP_MOUNT_VENDOR, KDP_MOUNT_VENDOR_LEN)) {
+		uh_call(UH_APP_RKP, RKP_KDP_X56, (u64)&vendor_sb, (u64)mnt, KDP_SB_VENDOR, 0);
+	} else if (!art_sb &&
+		!strncmp(mount_point, KDP_MOUNT_ART, KDP_MOUNT_ART_LEN - 1)) {
+		uh_call(UH_APP_RKP, RKP_KDP_X56, (u64)&art_sb, (u64)mnt, KDP_SB_ART, 0);
+	} else if ((art_count < ART_ALLOW) &&
+		!strncmp(mount_point, KDP_MOUNT_ART2, KDP_MOUNT_ART2_LEN - 1)) {
+		if (art_count)
+			uh_call(UH_APP_RKP, RKP_KDP_X56, (u64)&art_sb, (u64)mnt, KDP_SB_ART, 0);
+		art_count++;
+	}
+}
+#endif
 
 /*
  * create a new mount for userspace and request it to be added into the
