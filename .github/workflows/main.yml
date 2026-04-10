@@ -56,7 +56,11 @@ jobs:
       - name: Clone Toolchains
         run: |
           mkdir -p gcc clang
+
+          echo "→ Cloning GCC"
           git clone --depth=1 --branch ${GCC_BRANCH:-gcc-4.9} ${GCC_URL:-https://github.com/H33CKER/toolchains} gcc
+
+          echo "→ Cloning Clang"
           git clone --depth=1 --branch ${CLANG_BRANCH:-clang-12} ${CLANG_URL:-https://github.com/H33CKER/toolchains} clang
 
       - name: Clone AnyKernel3
@@ -66,14 +70,23 @@ jobs:
       - name: Prepare Directories
         run: mkdir -p $OUT_DIR $OUTPUT_DIR
 
+      - name: Disable CONFIG_CC_STACKPROTECTOR_STRONG (Fix Main Error)
+        run: |
+          echo "→ Disabling CONFIG_CC_STACKPROTECTOR_STRONG to fix compiler check"
+          scripts/config --file $OUT_DIR/.config --disable CC_STACKPROTECTOR_STRONG || true
+          # Alternative manual method if scripts/config fails
+          sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/' $OUT_DIR/.config 2>/dev/null || true
+
       - name: Build Kernel
         run: |
           echo "========================================"
           echo "Starting build for ${DEVICE}"
           echo "========================================"
 
+          # Generate defconfig (again after possible config change)
           make O=$OUT_DIR ARCH=arm64 $DEFCONFIG
 
+          # Build with more output for debugging
           make -j$(nproc --all) O=$OUT_DIR \
             ARCH=arm64 \
             CC=$CC \
@@ -85,20 +98,30 @@ jobs:
 
       - name: Package Kernel
         run: |
+          echo "→ Packaging kernel..."
+          KERNEL_IMAGE=""
+
           if [ -f $OUT_DIR/arch/arm64/boot/Image.gz-dtb ]; then
-            cp $OUT_DIR/arch/arm64/boot/Image.gz-dtb $ANYKERNEL_DIR/Image.gz-dtb
+            KERNEL_IMAGE=$OUT_DIR/arch/arm64/boot/Image.gz-dtb
+            cp $KERNEL_IMAGE $ANYKERNEL_DIR/Image.gz-dtb
           elif [ -f $OUT_DIR/arch/arm64/boot/Image.gz ]; then
-            cp $OUT_DIR/arch/arm64/boot/Image.gz $ANYKERNEL_DIR/Image.gz
+            KERNEL_IMAGE=$OUT_DIR/arch/arm64/boot/Image.gz
+            cp $KERNEL_IMAGE $ANYKERNEL_DIR/Image.gz
           elif [ -f $OUT_DIR/arch/arm64/boot/Image ]; then
-            cp $OUT_DIR/arch/arm64/boot/Image $ANYKERNEL_DIR/Image
+            KERNEL_IMAGE=$OUT_DIR/arch/arm64/boot/Image
+            cp $KERNEL_IMAGE $ANYKERNEL_DIR/Image
           else
-            echo "❌ Kernel image not found!"
+            echo "❌ Kernel image not found! Build failed."
+            echo "Last 50 lines of build.log:"
+            tail -n 50 $SRC/build.log
             exit 1
           fi
 
+          echo "✅ Using kernel image: $KERNEL_IMAGE"
+
           cd $ANYKERNEL_DIR
           ZIP_NAME="${DEVICE}-Kernel-$(date +%Y%m%d-%H%M).zip"
-          zip -r9 ../output/$ZIP_NAME * -x "*.git*" "*.md" "README*"
+          zip -r9 ../output/$ZIP_NAME * -x "*.git*" "*.md" "README*" 
 
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
 
@@ -107,10 +130,10 @@ jobs:
         with:
           name: ${{ env.DEVICE }}-Kernel
           path: ${{ env.OUTPUT_DIR }}/*.zip
+          if-no-files-found: warn
 
-      # ==================== TELEGRAM NOTIFICATION ====================
       - name: Send Telegram Notification
-        if: always()  # Runs even if build fails
+        if: always()
         uses: appleboy/telegram-action@master
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -120,9 +143,8 @@ jobs:
 
             Device: ${{ env.DEVICE }}
             Status: ${{ job.status }}
-            Triggered by: ${{ github.actor }}
+            Actor: ${{ github.actor }}
             Branch: ${{ github.ref_name }}
-            Commit: ${{ github.sha }}
 
-            ${{ job.status == 'success' && '📦 Download from Artifacts tab' || 'Check build.log for errors' }}
+            ${{ job.status == 'success' && '📦 Download from Artifacts' || 'Check build.log for details' }}
           format: markdown
