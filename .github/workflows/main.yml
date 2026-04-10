@@ -2,10 +2,6 @@ name: Build A22X Kernel
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
 
 jobs:
   build:
@@ -34,117 +30,66 @@ jobs:
             android-sdk-platform-tools-common libncurses5-dev libtinfo5 ccache \
             libglib2.0-dev libpixman-1-dev
 
-      - name: Set Environment Variables
-        run: |
-          cat << EOF >> $GITHUB_ENV
-          DEVICE=a22x
-          DEFCONFIG=a22x_defconfig
-          KBUILD_BUILD_USER=H3CKER
-          KBUILD_BUILD_HOST=H3CKED
-          SRC=$GITHUB_WORKSPACE
-          OUT_DIR=$GITHUB_WORKSPACE/out
-          ANYKERNEL_DIR=$GITHUB_WORKSPACE/AnyKernel3
-          OUTPUT_DIR=$GITHUB_WORKSPACE/output
-          ARCH=arm64
-          CROSS_COMPILE=$GITHUB_WORKSPACE/gcc/bin/aarch64-linux-androidkernel-
-          CC=$GITHUB_WORKSPACE/clang/bin/clang
-          CLANG_TRIPLE=aarch64-linux-gnu-
-          KCFLAGS=-w
-          CONFIG_SECTION_MISMATCH_WARN_ONLY=y
-          EOF
-
       - name: Clone Toolchains
         run: |
           mkdir -p gcc clang
-
-          echo "→ Cloning GCC"
-          git clone --depth=1 --branch ${GCC_BRANCH:-gcc-4.9} ${GCC_URL:-https://github.com/H33CKER/toolchains} gcc
-
-          echo "→ Cloning Clang"
-          git clone --depth=1 --branch ${CLANG_BRANCH:-clang-12} ${CLANG_URL:-https://github.com/H33CKER/toolchains} clang
+          git clone --depth=1 --branch gcc-4.9 https://github.com/H33CKER/toolchains gcc
+          git clone --depth=1 --branch clang-12 https://github.com/H33CKER/toolchains clang
 
       - name: Clone AnyKernel3
         run: |
-          git clone --depth=1 --branch ${ANYKERNEL_BRANCH:-A22} ${ANYKERNEL_URL:-https://github.com/H33CKER/AnyKernel3.git} $ANYKERNEL_DIR
+          git clone --depth=1 --branch A22 https://github.com/H33CKER/AnyKernel3.git AnyKernel3
 
       - name: Prepare Directories
-        run: mkdir -p $OUT_DIR $OUTPUT_DIR
+        run: mkdir -p out output
 
-      - name: Disable CONFIG_CC_STACKPROTECTOR_STRONG (Fix Main Error)
+      - name: Disable Stack Protector (Fix Compiler Error)
         run: |
-          echo "→ Disabling CONFIG_CC_STACKPROTECTOR_STRONG to fix compiler check"
-          scripts/config --file $OUT_DIR/.config --disable CC_STACKPROTECTOR_STRONG || true
-          # Alternative manual method if scripts/config fails
-          sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/' $OUT_DIR/.config 2>/dev/null || true
+          echo "→ Disabling CONFIG_CC_STACKPROTECTOR_STRONG"
+          # Run defconfig first
+          make O=out ARCH=arm64 a22x_defconfig
+          # Disable the problematic option
+          scripts/config --file out/.config --disable CC_STACKPROTECTOR_STRONG || true
+          sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/' out/.config 2>/dev/null || true
 
       - name: Build Kernel
         run: |
           echo "========================================"
-          echo "Starting build for ${DEVICE}"
+          echo "Starting build for a22x"
           echo "========================================"
 
-          # Generate defconfig (again after possible config change)
-          make O=$OUT_DIR ARCH=arm64 $DEFCONFIG
-
-          # Build with more output for debugging
-          make -j$(nproc --all) O=$OUT_DIR \
-            ARCH=arm64 \
-            CC=$CC \
-            CROSS_COMPILE=$CROSS_COMPILE \
-            CLANG_TRIPLE=$CLANG_TRIPLE \
-            KBUILD_BUILD_USER=$KBUILD_BUILD_USER \
-            KBUILD_BUILD_HOST=$KBUILD_BUILD_HOST \
-            2>&1 | tee $SRC/build.log
+          make O=out ARCH=arm64 -j$(nproc) \
+            CC=clang/bin/clang \
+            CROSS_COMPILE=gcc/bin/aarch64-linux-androidkernel- \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            KBUILD_BUILD_USER=H3CKER \
+            KBUILD_BUILD_HOST=H3CKED \
+            2>&1 | tee build.log
 
       - name: Package Kernel
         run: |
           echo "→ Packaging kernel..."
-          KERNEL_IMAGE=""
-
-          if [ -f $OUT_DIR/arch/arm64/boot/Image.gz-dtb ]; then
-            KERNEL_IMAGE=$OUT_DIR/arch/arm64/boot/Image.gz-dtb
-            cp $KERNEL_IMAGE $ANYKERNEL_DIR/Image.gz-dtb
-          elif [ -f $OUT_DIR/arch/arm64/boot/Image.gz ]; then
-            KERNEL_IMAGE=$OUT_DIR/arch/arm64/boot/Image.gz
-            cp $KERNEL_IMAGE $ANYKERNEL_DIR/Image.gz
-          elif [ -f $OUT_DIR/arch/arm64/boot/Image ]; then
-            KERNEL_IMAGE=$OUT_DIR/arch/arm64/boot/Image
-            cp $KERNEL_IMAGE $ANYKERNEL_DIR/Image
+          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+            cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
+            echo "Used: Image.gz-dtb"
+          elif [ -f out/arch/arm64/boot/Image.gz ]; then
+            cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
+            echo "Used: Image.gz"
           else
-            echo "❌ Kernel image not found! Build failed."
-            echo "Last 50 lines of build.log:"
-            tail -n 50 $SRC/build.log
+            echo "❌ Kernel image not found!"
+            echo "Last 30 lines of build.log:"
+            tail -n 30 build.log
             exit 1
           fi
 
-          echo "✅ Using kernel image: $KERNEL_IMAGE"
+          cd AnyKernel3
+          ZIP_NAME="a22x-Kernel-$(date +%Y%m%d-%H%M).zip"
+          zip -r9 "../output/$ZIP_NAME" * -x "*.git*" "*.md" "README*"
 
-          cd $ANYKERNEL_DIR
-          ZIP_NAME="${DEVICE}-Kernel-$(date +%Y%m%d-%H%M).zip"
-          zip -r9 ../output/$ZIP_NAME * -x "*.git*" "*.md" "README*" 
+          echo "✅ Package created: $ZIP_NAME"
 
-          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
-
-      - name: Upload Artifact
+      - name: Upload Kernel
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.DEVICE }}-Kernel
-          path: ${{ env.OUTPUT_DIR }}/*.zip
-          if-no-files-found: warn
-
-      - name: Send Telegram Notification
-        if: always()
-        uses: appleboy/telegram-action@master
-        with:
-          to: ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          message: |
-            *A22X Kernel Build* ${{ job.status == 'success' && '✅ Success' || '❌ Failed' }}
-
-            Device: ${{ env.DEVICE }}
-            Status: ${{ job.status }}
-            Actor: ${{ github.actor }}
-            Branch: ${{ github.ref_name }}
-
-            ${{ job.status == 'success' && '📦 Download from Artifacts' || 'Check build.log for details' }}
-          format: markdown
+          name: a22x-Kernel
+          path: output/*.zip
