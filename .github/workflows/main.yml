@@ -1,0 +1,122 @@
+name: Kernel Build - A22X
+
+on:
+  workflow_dispatch:  # Trigger manually from GitHub Actions tab
+  push:
+    branches: [ main, master ]  # Optional: auto-build on push to these branches
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    name: Build A22X Kernel
+    runs-on: ubuntu-22.04   # Good balance for kernel builds (or use ubuntu-latest)
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive   # if you have submodules
+
+      - name: Setup Build Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison flex libssl-dev make gcc git python3 \
+            android-sdk-platform-tools-common libncurses5-dev libtinfo5 \
+            ccache libglib2.0-dev libpixman-1-dev
+
+      - name: Clone Toolchains
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/gcc $GITHUB_WORKSPACE/clang
+
+          # GCC
+          git clone --depth=1 --branch ${{ env.GCC_BRANCH }} ${{ env.GCC_URL }} $GITHUB_WORKSPACE/gcc || \
+            git clone --depth=1 --branch gcc-4.9 ${{ env.GCC_URL }} $GITHUB_WORKSPACE/gcc
+
+          # Clang
+          git clone --depth=1 --branch ${{ env.CLANG_BRANCH }} ${{ env.CLANG_URL }} $GITHUB_WORKSPACE/clang || \
+            git clone --depth=1 --branch clang-12 ${{ env.CLANG_URL }} $GITHUB_WORKSPACE/clang
+
+      - name: Clone AnyKernel3
+        run: |
+          git clone --depth=1 --branch ${{ env.ANYKERNEL_BRANCH }} ${{ env.ANYKERNEL_URL }} ${{ env.ANYKERNEL_DIR }}
+
+      - name: Set Environment Variables
+        run: |
+          echo "DEVICE=${{ env.DEVICE }}" >> $GITHUB_ENV
+          echo "DEFCONFIG=${{ env.DEFCONFIG }}" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_USER=${{ env.KBUILD_BUILD_USER }}" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_HOST=${{ env.KBUILD_BUILD_HOST }}" >> $GITHUB_ENV
+          echo "SRC=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+          echo "OUT_DIR=$GITHUB_WORKSPACE/out" >> $GITHUB_ENV
+          echo "ANYKERNEL_DIR=$GITHUB_WORKSPACE/AnyKernel3" >> $GITHUB_ENV
+          echo "OUTPUT_DIR=$GITHUB_WORKSPACE/output" >> $GITHUB_ENV
+          echo "ARCH=arm64" >> $GITHUB_ENV
+          echo "CROSS_COMPILE=$GITHUB_WORKSPACE/gcc/bin/aarch64-linux-androidkernel-" >> $GITHUB_ENV
+          echo "CC=$GITHUB_WORKSPACE/clang/bin/clang" >> $GITHUB_ENV
+          echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
+          echo "PATH=$GITHUB_WORKSPACE/clang/bin:$GITHUB_WORKSPACE/gcc/bin:$PATH" >> $GITHUB_ENV
+          echo "KCFLAGS=-w" >> $GITHUB_ENV
+          echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $GITHUB_ENV
+
+      - name: Create Output Directory
+        run: mkdir -p ${{ env.OUTPUT_DIR }}
+
+      - name: Build Kernel
+        run: |
+          echo "========================================"
+          echo "Starting kernel build for ${DEVICE}"
+          echo "========================================"
+
+          # Create out directory
+          mkdir -p $OUT_DIR
+
+          # Defconfig
+          make O=$OUT_DIR ARCH=arm64 $DEFCONFIG
+
+          # Build
+          make -j$(nproc --all) O=$OUT_DIR \
+            ARCH=arm64 \
+            CC=$CC \
+            CROSS_COMPILE=$CROSS_COMPILE \
+            CLANG_TRIPLE=$CLANG_TRIPLE \
+            KBUILD_BUILD_USER=$KBUILD_BUILD_USER \
+            KBUILD_BUILD_HOST=$KBUILD_BUILD_HOST \
+            2>&1 | tee $LOG_FILE
+
+          echo "Build completed. Checking for Image.gz-dtb or Image..."
+
+      - name: Prepare AnyKernel3
+        run: |
+          if [ -f $OUT_DIR/arch/arm64/boot/Image.gz-dtb ]; then
+            cp $OUT_DIR/arch/arm64/boot/Image.gz-dtb $ANYKERNEL_DIR/Image.gz-dtb
+          elif [ -f $OUT_DIR/arch/arm64/boot/Image.gz ]; then
+            cp $OUT_DIR/arch/arm64/boot/Image.gz $ANYKERNEL_DIR/Image.gz
+          elif [ -f $OUT_DIR/arch/arm64/boot/Image ]; then
+            cp $OUT_DIR/arch/arm64/boot/Image $ANYKERNEL_DIR/Image
+          else
+            echo "Kernel image not found! Build failed."
+            exit 1
+          fi
+
+          cd $ANYKERNEL_DIR
+          zip -r9 ../output/${DEVICE}-kernel-$(date +%Y%m%d-%H%M).zip * -x "*.git*"
+
+      - name: Upload Kernel Zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.DEVICE }}-kernel
+          path: ${{ env.OUTPUT_DIR }}/*.zip
+          if-no-files-found: error
+
+      - name: Telegram Notification (if tokens are set)
+        if: env.BOT_TOKEN != '' && env.CHAT_ID != ''
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ env.CHAT_ID }}
+          token: ${{ env.BOT_TOKEN }}
+          message: |
+            ✅ Kernel build finished for ${{ env.DEVICE }}
+            📦 Check the Artifacts tab for the flashable zip.
