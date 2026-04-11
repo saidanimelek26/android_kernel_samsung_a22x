@@ -52,6 +52,7 @@ enum CHR_CURRENT_ENUM g_temp_CC_value = CHARGE_CURRENT_0_00_MA;
 enum CHR_CURRENT_ENUM g_temp_input_CC_value = CHARGE_CURRENT_0_00_MA;
 unsigned int g_usb_state = USB_UNCONFIGURED;
 static bool usb_unlimited;
+
 #if (CONFIG_MTK_GAUGE_VERSION == 20)
 #ifdef HIGH_BATTERY_VOLTAGE_SUPPORT
 enum BATTERY_VOLTAGE_ENUM g_cv_voltage = BATTERY_VOLT_04_340000_V;
@@ -733,18 +734,12 @@ static bool mtk_is_pep_series_connect(void)
 	return false;
 }
 
+/* MODIFIED: Completely disable AICR upper bound check */
 static int mtk_check_aicr_upper_bound(void)
 {
-	u32 aicr_upper_bound = 0; /* 10uA */
-
-	if (mtk_is_pep_series_connect())
-		return -EPERM;
-
-	/* Check AICR upper bound gererated by AICL */
-	aicr_upper_bound = g_aicr_upper_bound * 100;
-	if (g_temp_input_CC_value > aicr_upper_bound && aicr_upper_bound > 0)
-		g_temp_input_CC_value = aicr_upper_bound;
-
+	/* DISABLED: Always return success without checking AICR */
+	battery_log(BAT_LOG_CRTI,
+		    "[BATTERY] AICR upper bound check is DISABLED - always charging at max current\n");
 	return 0;
 }
 
@@ -921,6 +916,7 @@ void select_charging_current_bcct(void)
 	mtk_check_aicr_upper_bound();
 }
 
+/* MODIFIED: mtk_select_ichg_aicr - always use maximum current */
 static void mtk_select_ichg_aicr(void)
 {
 	unsigned int enable_charger = KAL_TRUE;
@@ -963,9 +959,28 @@ static void mtk_select_ichg_aicr(void)
 			    "[BATTERY] select_charging_curret !\n");
 	}
 #endif
+
+	/* MODIFIED: Force maximum charging current at ALL times (screen on/off doesn't matter) */
+	/* Always use the maximum possible input current */
+	if (g_temp_input_CC_value < batt_cust_data.ac_charger_input_current && 
+	    batt_cust_data.ac_charger_input_current != 0) {
+		g_temp_input_CC_value = batt_cust_data.ac_charger_input_current;
+		battery_log(BAT_LOG_CRTI,
+		    "[BATTERY] FORCE MODE: Setting max input current = %d mA\n",
+		    g_temp_input_CC_value);
+	}
+	
+	/* Always use the maximum possible charge current */
+	if (g_temp_CC_value < batt_cust_data.ac_charger_current) {
+		g_temp_CC_value = batt_cust_data.ac_charger_current;
+		battery_log(BAT_LOG_CRTI,
+		    "[BATTERY] FORCE MODE: Setting max charge current = %d mA\n",
+		    g_temp_CC_value);
+	}
+
 	battery_log(
 		BAT_LOG_CRTI,
-		"[BATTERY] Default CC mode charging : %d, input current = %d\n",
+		"[BATTERY] FINAL Charging settings: charge current = %d, input current = %d\n",
 		g_temp_CC_value, g_temp_input_CC_value);
 
 	battery_charging_control(CHARGING_CMD_SET_INPUT_CURRENT,
@@ -1033,6 +1048,7 @@ static void mtk_select_cv(void)
 #endif
 }
 
+/* MODIFIED: pchr_turn_on_charging - remove system current limiting */
 static void pchr_turn_on_charging(void)
 {
 	u32 charging_enable = KAL_TRUE;
@@ -1286,10 +1302,11 @@ void mt_battery_charging_algorithm(void)
 {
 	battery_charging_control(CHARGING_CMD_RESET_WATCH_DOG_TIMER, NULL);
 
-	/* Generate AICR upper bound by AICL */
+	/* Generate AICR upper bound by AICL - DISABLED */
 	if (!mtk_is_pep_series_connect()) {
-		battery_charging_control(CHARGING_CMD_RUN_AICL,
-					 &g_aicr_upper_bound);
+		/* DISABLED: Do not run AICL to avoid current reduction */
+		/* battery_charging_control(CHARGING_CMD_RUN_AICL, &g_aicr_upper_bound); */
+		battery_log(BAT_LOG_CRTI, "[BATTERY] AICL algorithm DISABLED\n");
 	}
 
 	mtk_pep20_check_charger();
