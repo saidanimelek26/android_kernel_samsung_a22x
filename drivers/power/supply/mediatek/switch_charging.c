@@ -743,8 +743,20 @@ static int mtk_check_aicr_upper_bound(void)
 	return 0;
 }
 
+/* MODIFIED: select_charging_current - Force STANDARD_CHARGER mode to prevent USB current limit */
 void select_charging_current(void)
 {
+	/* NEW: Force charger type to STANDARD_CHARGER to prevent USB mode current limit (500mA) */
+	/* This is the FIX for the problem: when screen turns on, system wrongly switches to USB mode */
+	if (BMT_status.charger_exist && 
+	    (BMT_status.charger_type == STANDARD_HOST || 
+	     BMT_status.charger_type == CHARGING_HOST ||
+	     BMT_status.charger_type == NONSTANDARD_CHARGER)) {
+		BMT_status.charger_type = STANDARD_CHARGER;
+		battery_log(BAT_LOG_CRTI,
+		    "[BATTERY] FORCED FIX: Changing charger_type from USB/HOST to STANDARD_CHARGER to maintain high charging current\n");
+	}
+	
 	if (g_ftm_battery_flag) {
 		battery_log(BAT_LOG_CRTI, "[BATTERY] FTM charging : %d\r\n",
 			    charging_level_data[0]);
