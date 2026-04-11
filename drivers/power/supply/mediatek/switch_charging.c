@@ -39,6 +39,10 @@
 #define STATUS_UNSUPPORTED -1
 #define STATUS_FAIL -2
 
+/* CRITICAL FIX: Override charger detection to force STANDARD_CHARGER */
+/* This fixes the "Charging Source: Unknown" problem */
+#define FORCE_CHARGER_TYPE_OVERRIDE 1
+
 /* ============================================================ // */
 /* global variable */
 /* ============================================================ // */
@@ -743,18 +747,18 @@ static int mtk_check_aicr_upper_bound(void)
 	return 0;
 }
 
-/* MODIFIED: select_charging_current - Force STANDARD_CHARGER mode to prevent USB current limit */
+/* CRITICAL FIX: select_charging_current - Force STANDARD_CHARGER to fix "Unknown source" */
 void select_charging_current(void)
 {
-	/* NEW: Force charger type to STANDARD_CHARGER to prevent USB mode current limit (500mA) */
-	/* This is the FIX for the problem: when screen turns on, system wrongly switches to USB mode */
-	if (BMT_status.charger_exist && 
-	    (BMT_status.charger_type == STANDARD_HOST || 
-	     BMT_status.charger_type == CHARGING_HOST ||
-	     BMT_status.charger_type == NONSTANDARD_CHARGER)) {
+	/* CRITICAL FIX: Force charger type to STANDARD_CHARGER */
+	/* This fixes the "Charging Source: Unknown" problem that limits current to ~160mA */
+	if (BMT_status.charger_exist) {
+#if FORCE_CHARGER_TYPE_OVERRIDE
+		/* Force to STANDARD_CHARGER regardless of detected type */
 		BMT_status.charger_type = STANDARD_CHARGER;
 		battery_log(BAT_LOG_CRTI,
-		    "[BATTERY] FORCED FIX: Changing charger_type from USB/HOST to STANDARD_CHARGER to maintain high charging current\n");
+		    "[BATTERY] CRITICAL FIX: Forced charger_type = STANDARD_CHARGER (AC Charger)\n");
+#endif
 	}
 	
 	if (g_ftm_battery_flag) {
