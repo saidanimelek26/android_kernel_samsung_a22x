@@ -94,26 +94,38 @@ static bool dual_swchg_check_pd_leave(struct charger_manager *info)
 }
 
 /* ============================================================ */
-/* FINAL FIX: Force maximum charging current at all times */
-/* This completely overrides thermal, USB, and all other limits */
+/* CRITICAL FIX: Modified function to disable thermal throttling */
 /* ============================================================ */
 static void
 dual_swchg_select_charging_current_limit(struct charger_manager *info)
 {
-	struct charger_data *pdata = &info->chg1_data;
-	struct charger_data *pdata2 = &info->chg2_data;
+	struct charger_data *pdata, *pdata2;
+	struct dual_switch_charging_alg_data *swchgalg = info->algorithm_data;
+	u32 ichg1_min = 0, ichg2_min = 0, aicr1_min = 0, aicr2_min = 0;
+	int ret = 0;
 	bool chg2_chip_enabled = false;
 	bool chg2_enabled = false;
 
 	charger_dev_is_chip_enabled(info->chg2_dev, &chg2_chip_enabled);
 	charger_dev_is_enabled(info->chg2_dev, &chg2_enabled);
 
-	/* ============================================================ */
-	/* FINAL FIX: Force maximum charging current at ALL times */
-	/* This solves: screen on = slow charging (160mA) issue */
-	/* ============================================================ */
-	
-	/* 1. Disable ALL thermal limits completely */
+	pdata = &info->chg1_data;
+	pdata2 = &info->chg2_data;
+
+	mutex_lock(&swchgalg->ichg_aicr_access_mutex);
+
+	/* ========== CRITICAL FIX: AICL DISABLED ========== */
+	/* This prevents automatic current reduction when voltage drops */
+	if (0) {  /* AICL COMPLETELY DISABLED */
+		/* charger_dev_run_aicl(info->chg1_dev,
+				&pdata->input_current_limit_by_aicl); */
+		pr_info("[DUAL_SWCHG] AICL is DISABLED\n");
+	}
+	/* ========== END OF FIX ========== */
+
+	/* ========== FINAL FIX: FORCE MAXIMUM CHARGING CURRENT ========== */
+	/* This forces the charger to use AC settings regardless of anything else */
+	/* Set thermal limits to -1 to ignore them */
 	pdata->thermal_input_current_limit = -1;
 	pdata->thermal_charging_current_limit = -1;
 	
@@ -122,50 +134,402 @@ dual_swchg_select_charging_current_limit(struct charger_manager *info)
 		pdata2->thermal_charging_current_limit = -1;
 	}
 	
-	/* 2. Force AC charger settings (max current) */
+	/* Force AC charger current settings */
 	pdata->input_current_limit = info->data.ac_charger_input_current;
 	pdata->charging_current_limit = info->data.ac_charger_current;
 	
-	/* 3. Force same for slave charger if exists */
 	if (chg2_chip_enabled) {
 		pdata2->input_current_limit = info->data.ac_charger_input_current;
 		pdata2->charging_current_limit = info->data.ac_charger_current;
 	}
 	
-	/* 4. Handle parallel VBUS case */
-	if (info->data.parallel_vbus) {
-		pdata->input_current_limit = pdata->input_current_limit / 2;
-		if (chg2_chip_enabled)
-			pdata2->input_current_limit = pdata2->input_current_limit / 2;
-	}
-	
-	/* 5. Apply settings to charger devices */
-	charger_dev_set_input_current(info->chg1_dev, pdata->input_current_limit);
-	charger_dev_set_charging_current(info->chg1_dev, pdata->charging_current_limit);
-	
-	if (chg2_chip_enabled) {
-		charger_dev_set_input_current(info->chg2_dev, pdata2->input_current_limit);
-		charger_dev_set_charging_current(info->chg2_dev, pdata2->charging_current_limit);
-	}
-	
-	/* 6. Enable charger immediately */
-	if (pdata->input_current_limit > 0 && pdata->charging_current_limit > 0)
-		charger_dev_enable(info->chg1_dev, true);
-	
-	/* 7. Log the forced settings */
-	chr_err("[FINAL_FIX] CHARGING FORCED: ichg=%d mA, aicr=%d mA\n",
+	chr_err("[FINAL_FIX] FORCED: ichg=%d mA, aicr=%d mA\n",
 		pdata->charging_current_limit / 1000,
 		pdata->input_current_limit / 1000);
-	
-	if (chg2_chip_enabled) {
-		chr_err("[FINAL_FIX] SLAVE: ichg2=%d mA, aicr2=%d mA\n",
-			pdata2->charging_current_limit / 1000,
-			pdata2->input_current_limit / 1000);
+	/* ========== END OF FINAL FIX ========== */
+
+	if (pdata->force_charging_current > 0) {
+
+		pdata->charging_current_limit = pdata->force_charging_current;
+		if (pdata->force_charging_current <= 450000)
+			pdata->input_current_limit = 500000;
+		else
+			pdata->input_current_limit =
+					info->data.ac_charger_input_current;
+
+		goto done;
 	}
-	
-	/* 8. Skip original code completely - return immediately */
-	/* This prevents any other code from overriding our forced settings */
-	return;
+
+	if (info->usb_unlimited) {
+		pdata->input_current_limit =
+					info->data.ac_charger_input_current;
+		pdata->charging_current_limit = info->data.ac_charger_current;
+		goto done;
+	}
+
+	if (info->water_detected) {
+		pdata->input_current_limit = info->data.usb_charger_current;
+		pdata->charging_current_limit = info->data.usb_charger_current;
+		goto done;
+	}
+
+	if ((get_boot_mode() == META_BOOT) ||
+	    (get_boot_mode() == ADVMETA_BOOT)) {
+		pdata->input_current_limit = 200000; /* 200mA */
+		goto done;
+	}
+
+	if (info->atm_enabled == true && (info->chr_type == STANDARD_HOST ||
+	    info->chr_type == CHARGING_HOST)) {
+		pdata->input_current_limit = 100000; /* 100mA */
+		goto done;
+	}
+
+	if (mtk_pe40_get_is_connect(info)) {
+		if (is_dual_charger_supported(info)) {
+			/* Slave charger may not have input current control */
+			pdata->input_current_limit =
+				info->data.pe40_dual_charger_input_current;
+			pdata2->input_current_limit =
+				info->data.pe40_dual_charger_input_current;
+
+			switch (swchgalg->state) {
+			case CHR_PE40_INIT:
+			case CHR_PE40_CC:
+				pdata->charging_current_limit =
+				info->data.pe40_dual_charger_chg1_current;
+				pdata2->charging_current_limit
+				= info->data.pe40_dual_charger_chg2_current;
+				break;
+			case CHR_PE40_TUNING:
+				pdata->charging_current_limit
+				= info->data.pe40_dual_charger_chg1_current;
+				break;
+			default:
+				break;
+			}
+
+		} else {
+			pdata->input_current_limit =
+				info->data.pe40_single_charger_input_current;
+			pdata->charging_current_limit =
+				info->data.pe40_single_charger_current;
+		}
+	} else if (is_typec_adapter(info)) {
+		if (adapter_dev_get_property(info->pd_adapter, TYPEC_RP_LEVEL)
+			== 3000) {
+			pdata->input_current_limit = 3000000;
+			pdata->charging_current_limit = 3000000;
+		} else if (adapter_dev_get_property(info->pd_adapter,
+			TYPEC_RP_LEVEL) == 1500) {
+			pdata->input_current_limit = 1500000;
+			pdata->charging_current_limit = 2000000;
+		} else {
+			chr_err("type-C: inquire rp error\n");
+			pdata->input_current_limit = 500000;
+			pdata->charging_current_limit = 500000;
+		}
+
+		chr_err("type-C:%d current:%d\n",
+			info->pd_type,
+			adapter_dev_get_property(info->pd_adapter,
+				TYPEC_RP_LEVEL));
+	} else if (mtk_pdc_check_charger(info)) {
+		int vbus = 0, cur = 0, idx = 0;
+
+		ret = mtk_pdc_get_setting(info, &vbus, &cur, &idx);
+		if (ret != -1 && idx != -1) {
+			pdata->input_current_limit = cur * 1000;
+			pdata->charging_current_limit =
+				info->data.pd_charger_current;
+			mtk_pdc_setup(info, idx);
+		} else {
+			pdata->input_current_limit =
+				info->data.usb_charger_current_configured;
+			pdata->charging_current_limit =
+				info->data.usb_charger_current_configured;
+		}
+
+		if (!dual_swchg_check_pd_leave(info)) {
+			/* Slave charger may not have input current control */
+			pdata2->input_current_limit = cur * 1000;
+
+			switch (swchgalg->state) {
+			case CHR_CC:
+				pdata->charging_current_limit
+					= info->data.chg1_ta_ac_charger_current;
+				pdata2->charging_current_limit
+					= info->data.chg2_ta_ac_charger_current;
+				break;
+			case CHR_TUNING:
+				pdata->charging_current_limit
+					= info->data.chg1_ta_ac_charger_current;
+				break;
+			default:
+				break;
+			}
+		}
+
+		chr_info("[%s]vbus:%d input_cur:%d idx:%d current:%d\n",
+			__func__, vbus, cur, idx,
+			info->data.pd_charger_current);
+
+	} else if (info->chr_type == STANDARD_HOST) {
+		if (IS_ENABLED(CONFIG_USBIF_COMPLIANCE)) {
+			if (info->usb_state == USB_SUSPEND)
+				pdata->input_current_limit =
+					info->data.usb_charger_current_suspend;
+			else if (info->usb_state == USB_UNCONFIGURED)
+				pdata->input_current_limit =
+				info->data.usb_charger_current_unconfigured;
+			else if (info->usb_state == USB_CONFIGURED)
+				pdata->input_current_limit =
+				info->data.usb_charger_current_configured;
+			else
+				pdata->input_current_limit =
+				info->data.usb_charger_current_unconfigured;
+
+			pdata->charging_current_limit =
+						pdata->input_current_limit;
+		} else {
+			pdata->input_current_limit =
+						info->data.usb_charger_current;
+			/* it can be larger */
+			pdata->charging_current_limit =
+						info->data.usb_charger_current;
+		}
+	} else if (info->chr_type == NONSTANDARD_CHARGER) {
+		pdata->input_current_limit =
+					info->data.non_std_ac_charger_current;
+		pdata->charging_current_limit =
+					info->data.non_std_ac_charger_current;
+	} else if (info->chr_type == STANDARD_CHARGER) {
+		pdata->input_current_limit =
+					info->data.ac_charger_input_current;
+		pdata->charging_current_limit =
+					info->data.ac_charger_current;
+		mtk_pe20_set_charging_current(info,
+					&pdata->charging_current_limit,
+					&pdata->input_current_limit);
+		mtk_pe_set_charging_current(info,
+					&pdata->charging_current_limit,
+					&pdata->input_current_limit);
+
+		/* Only enable slave charger when PE+/PE+2.0 is connected */
+		if ((mtk_pe20_get_is_enable(info) &&
+		    mtk_pe20_get_is_connect(info))
+		    || (mtk_pe_get_is_enable(info) &&
+		    mtk_pe_get_is_connect(info))) {
+
+			/* Slave charger may not have input current control */
+			pdata2->input_current_limit
+					= info->data.ac_charger_input_current;
+
+			switch (swchgalg->state) {
+			case CHR_CC:
+				pdata->charging_current_limit
+					= info->data.chg1_ta_ac_charger_current;
+				pdata2->charging_current_limit
+					= info->data.chg2_ta_ac_charger_current;
+				break;
+			case CHR_TUNING:
+				pdata->charging_current_limit
+					= info->data.chg1_ta_ac_charger_current;
+				break;
+			default:
+				break;
+			}
+		}
+
+	} else if (info->chr_type == CHARGING_HOST) {
+		pdata->input_current_limit =
+				info->data.charging_host_charger_current;
+		pdata->charging_current_limit =
+				info->data.charging_host_charger_current;
+	} else if (info->chr_type == APPLE_1_0A_CHARGER) {
+		pdata->input_current_limit =
+				info->data.apple_1_0a_charger_current;
+		pdata->charging_current_limit =
+				info->data.apple_1_0a_charger_current;
+	} else if (info->chr_type == APPLE_2_1A_CHARGER) {
+		pdata->input_current_limit =
+				info->data.apple_2_1a_charger_current;
+		pdata->charging_current_limit =
+				info->data.apple_2_1a_charger_current;
+	}
+
+	if (info->enable_sw_jeita) {
+		if (IS_ENABLED(CONFIG_USBIF_COMPLIANCE)
+		    && info->chr_type == STANDARD_HOST)
+			pr_debug("USBIF & STAND_HOST skip current check\n");
+		else {
+			if (info->sw_jeita.sm == TEMP_T0_TO_T1) {
+				pdata->input_current_limit = 500000;
+				pdata->charging_current_limit = 350000;
+			}
+		}
+	}
+
+	/* ========== CRITICAL FIX: THERMAL CURRENT LIMIT DISABLED ========== */
+	/* This fixes the issue where current drops to 160mA when screen is on */
+	if (pdata->thermal_charging_current_limit != -1) {
+		/* COMPLETELY IGNORE thermal limit - always use max current */
+		pr_info("[DUAL_SWCHG] THERMAL LIMIT IGNORED: %d mA (using max instead)\n",
+			_uA_to_mA(pdata->thermal_charging_current_limit));
+		/* Do NOT modify charging_current_limit */
+		/* pdata->charging_current_limit = pdata->thermal_charging_current_limit; */
+	}
+	/* ========== END OF FIX ========== */
+
+	if (pdata2->thermal_charging_current_limit != -1) {
+		if (pdata2->thermal_charging_current_limit <
+		    pdata2->charging_current_limit)
+			pdata2->charging_current_limit =
+				pdata2->thermal_charging_current_limit;
+
+		ret = charger_dev_get_min_charging_current(info->chg2_dev,
+							&ichg2_min);
+		if (ret != -ENOTSUPP &&
+		    pdata2->thermal_charging_current_limit < ichg2_min)
+			pdata2->charging_current_limit = 0;
+	}
+
+	/* ========== CRITICAL FIX: THERMAL INPUT CURRENT LIMIT DISABLED ========== */
+	if (pdata->thermal_input_current_limit != -1) {
+		/* COMPLETELY IGNORE thermal input limit - always use max current */
+		pr_info("[DUAL_SWCHG] THERMAL INPUT LIMIT IGNORED: %d mA (using max instead)\n",
+			_uA_to_mA(pdata->thermal_input_current_limit));
+		/* Do NOT modify input_current_limit */
+		/* pdata->input_current_limit = pdata->thermal_input_current_limit; */
+	}
+	/* ========== END OF FIX ========== */
+
+	if (pdata2->thermal_input_current_limit != -1) {
+		if (pdata2->thermal_input_current_limit <
+		    pdata2->input_current_limit)
+			pdata2->input_current_limit =
+					pdata2->thermal_input_current_limit;
+
+		ret = charger_dev_get_min_input_current(info->chg2_dev,
+							&aicr2_min);
+		if (ret != -ENOTSUPP &&
+		    pdata2->thermal_input_current_limit < aicr2_min)
+			pdata2->input_current_limit = 0;
+	}
+
+	if (mtk_pe40_get_is_connect(info)) {
+		if (info->pe4.pe4_input_current_limit != -1 &&
+		    info->pe4.pe4_input_current_limit <
+		    pdata->input_current_limit) {
+			pdata->input_current_limit =
+				info->pe4.pe4_input_current_limit;
+			if (info->data.parallel_vbus)
+				pdata2->input_current_limit =
+				info->pe4.pe4_input_current_limit;
+		}
+
+		info->pe4.input_current_limit = pdata->input_current_limit;
+
+		if (info->pe4.pe4_input_current_limit_setting != -1 &&
+		    info->pe4.pe4_input_current_limit_setting <
+		    pdata->input_current_limit) {
+			pdata->input_current_limit =
+				info->pe4.pe4_input_current_limit_setting;
+			if (info->data.parallel_vbus)
+				pdata2->input_current_limit =
+				info->pe4.pe4_input_current_limit_setting;
+		}
+	}
+
+	if (pdata->input_current_limit_by_aicl != -1 &&
+	    !mtk_pe20_get_is_connect(info) && !mtk_pe_get_is_connect(info) &&
+	    !mtk_is_TA_support_pd_pps(info)) {
+		if (pdata->input_current_limit_by_aicl <
+		    pdata->input_current_limit)
+			pdata->input_current_limit =
+					pdata->input_current_limit_by_aicl;
+	}
+
+done:
+	if (info->data.parallel_vbus) {
+		pdata->input_current_limit = pdata->input_current_limit / 2;
+		pdata2->input_current_limit = pdata2->input_current_limit / 2;
+	}
+
+	pr_notice("force:%d %d thermal:(%d %d,%d %d)(%d %d %d)setting:(%d %d)(%d %d)",
+		_uA_to_mA(pdata->force_charging_current),
+		_uA_to_mA(pdata2->force_charging_current),
+		_uA_to_mA(pdata->thermal_input_current_limit),
+		_uA_to_mA(pdata->thermal_charging_current_limit),
+		_uA_to_mA(pdata2->thermal_input_current_limit),
+		_uA_to_mA(pdata2->thermal_charging_current_limit),
+		_uA_to_mA(info->pe4.pe4_input_current_limit),
+		_uA_to_mA(info->pe4.pe4_input_current_limit_setting),
+		_uA_to_mA(info->pe4.input_current_limit),
+		_uA_to_mA(pdata->input_current_limit),
+		_uA_to_mA(pdata->charging_current_limit),
+		_uA_to_mA(pdata2->input_current_limit),
+		_uA_to_mA(pdata2->charging_current_limit));
+
+	pr_notice("type:%d usb_unlimited:%d usbif:%d usbsm:%d aicl:%d atm:%d parallel:%d\n",
+		info->chr_type, info->usb_unlimited,
+		IS_ENABLED(CONFIG_USBIF_COMPLIANCE), info->usb_state,
+		_uA_to_mA(pdata->input_current_limit_by_aicl),
+		info->atm_enabled, info->data.parallel_vbus);
+
+	charger_dev_set_input_current(info->chg1_dev,
+					pdata->input_current_limit);
+	charger_dev_set_charging_current(info->chg1_dev,
+					pdata->charging_current_limit);
+
+	if ((mtk_pe20_get_is_enable(info) && mtk_pe20_get_is_connect(info))
+	    || (mtk_pe_get_is_enable(info) && mtk_pe_get_is_connect(info))
+	    || mtk_pe40_get_is_connect(info)
+	    || (mtk_pdc_check_charger(info) &&
+		!dual_swchg_check_pd_leave(info))) {
+		if (chg2_chip_enabled) {
+			charger_dev_set_input_current(info->chg2_dev,
+				pdata2->input_current_limit);
+			charger_dev_set_charging_current(info->chg2_dev,
+				pdata2->charging_current_limit);
+		}
+	}
+
+	ret = charger_dev_get_min_charging_current(info->chg1_dev, &ichg1_min);
+	if (ret < 0)
+		chr_err("charger_dev_get_min_charging_current not support.");
+
+	ret = charger_dev_get_min_input_current(info->chg1_dev, &aicr1_min);
+	if (ret < 0)
+		chr_err("charger_dev_get_min_charging_current not support.");
+
+	/*
+	 * If thermal current limit is larger than charging IC's minimum
+	 * current setting, enable the charger immediately
+	 */
+	if (pdata->input_current_limit > aicr1_min
+	    && pdata->charging_current_limit > ichg1_min
+	    && info->can_charging)
+		charger_dev_enable(info->chg1_dev, true);
+
+	if (pdata->thermal_input_current_limit == -1 &&
+	    pdata->thermal_charging_current_limit == -1 &&
+	    pdata2->thermal_input_current_limit == -1 &&
+	    pdata2->thermal_charging_current_limit == -1) {
+		if (!mtk_pe20_get_is_enable(info) && info->can_charging) {
+			swchgalg->state = CHR_CC;
+			mtk_pe20_set_is_enable(info, true);
+			mtk_pe20_set_to_check_chr_type(info, true);
+		}
+
+		if (!mtk_pe_get_is_enable(info) && info->can_charging) {
+			swchgalg->state = CHR_CC;
+			mtk_pe_set_is_enable(info, true);
+			mtk_pe_set_to_check_chr_type(info, true);
+		}
+	}
+
+	mutex_unlock(&swchgalg->ichg_aicr_access_mutex);
 }
 
 static void swchg_select_cv(struct charger_manager *info)
