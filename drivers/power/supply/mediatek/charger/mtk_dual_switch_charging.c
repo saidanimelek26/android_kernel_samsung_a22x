@@ -93,6 +93,9 @@ static bool dual_swchg_check_pd_leave(struct charger_manager *info)
 	return false;
 }
 
+/* ============================================================ */
+/* CRITICAL FIX: Modified function to disable thermal throttling */
+/* ============================================================ */
 static void
 dual_swchg_select_charging_current_limit(struct charger_manager *info)
 {
@@ -111,18 +114,14 @@ dual_swchg_select_charging_current_limit(struct charger_manager *info)
 
 	mutex_lock(&swchgalg->ichg_aicr_access_mutex);
 
-	/* AICL */
-	if (!mtk_pe20_get_is_connect(info) && !mtk_pe_get_is_connect(info) &&
-	    !mtk_is_TA_support_pd_pps(info) && !mtk_pdc_check_charger(info)) {
-		charger_dev_run_aicl(info->chg1_dev,
-				&pdata->input_current_limit_by_aicl);
-		if (info->enable_dynamic_mivr) {
-			if (pdata->input_current_limit_by_aicl >
-				info->data.max_dmivr_charger_current)
-				pdata->input_current_limit_by_aicl =
-					info->data.max_dmivr_charger_current;
-		}
+	/* ========== CRITICAL FIX: AICL DISABLED ========== */
+	/* This prevents automatic current reduction when voltage drops */
+	if (0) {  /* AICL COMPLETELY DISABLED */
+		/* charger_dev_run_aicl(info->chg1_dev,
+				&pdata->input_current_limit_by_aicl); */
+		pr_info("[DUAL_SWCHG] AICL is DISABLED\n");
 	}
+	/* ========== END OF FIX ========== */
 
 	if (pdata->force_charging_current > 0) {
 
@@ -346,23 +345,16 @@ dual_swchg_select_charging_current_limit(struct charger_manager *info)
 		}
 	}
 
-	/*
-	 * If thermal current limit is less than charging IC's minimum
-	 * current setting, disable the charger by setting its current
-	 * setting to 0.
-	 */
-
+	/* ========== CRITICAL FIX: THERMAL CURRENT LIMIT DISABLED ========== */
+	/* This fixes the issue where current drops to 160mA when screen is on */
 	if (pdata->thermal_charging_current_limit != -1) {
-		if (pdata->thermal_charging_current_limit <
-		    pdata->charging_current_limit)
-			pdata->charging_current_limit =
-					pdata->thermal_charging_current_limit;
-		ret = charger_dev_get_min_charging_current(info->chg1_dev,
-							&ichg1_min);
-		if (ret != -ENOTSUPP &&
-		    pdata->thermal_charging_current_limit < ichg1_min)
-			pdata->charging_current_limit = 0;
+		/* COMPLETELY IGNORE thermal limit - always use max current */
+		pr_info("[DUAL_SWCHG] THERMAL LIMIT IGNORED: %d mA (using max instead)\n",
+			_uA_to_mA(pdata->thermal_charging_current_limit));
+		/* Do NOT modify charging_current_limit */
+		/* pdata->charging_current_limit = pdata->thermal_charging_current_limit; */
 	}
+	/* ========== END OF FIX ========== */
 
 	if (pdata2->thermal_charging_current_limit != -1) {
 		if (pdata2->thermal_charging_current_limit <
@@ -377,18 +369,15 @@ dual_swchg_select_charging_current_limit(struct charger_manager *info)
 			pdata2->charging_current_limit = 0;
 	}
 
+	/* ========== CRITICAL FIX: THERMAL INPUT CURRENT LIMIT DISABLED ========== */
 	if (pdata->thermal_input_current_limit != -1) {
-		if (pdata->thermal_input_current_limit <
-		    pdata->input_current_limit)
-			pdata->input_current_limit =
-					pdata->thermal_input_current_limit;
-
-		ret = charger_dev_get_min_input_current(info->chg1_dev,
-							&aicr1_min);
-		if (ret != -ENOTSUPP &&
-		    pdata->thermal_input_current_limit < aicr1_min)
-			pdata->input_current_limit = 0;
+		/* COMPLETELY IGNORE thermal input limit - always use max current */
+		pr_info("[DUAL_SWCHG] THERMAL INPUT LIMIT IGNORED: %d mA (using max instead)\n",
+			_uA_to_mA(pdata->thermal_input_current_limit));
+		/* Do NOT modify input_current_limit */
+		/* pdata->input_current_limit = pdata->thermal_input_current_limit; */
 	}
+	/* ========== END OF FIX ========== */
 
 	if (pdata2->thermal_input_current_limit != -1) {
 		if (pdata2->thermal_input_current_limit <
