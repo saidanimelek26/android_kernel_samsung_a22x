@@ -407,11 +407,15 @@ static int mt_ac_get_property(struct power_supply *psy,
 //+Bug495355,lili5.wt,ADD,20191109,charging type report
 extern  bool mtk_is_pep_series_connect(struct charger_manager *info);
 //-Bug495355,lili5.wt,ADD,20191109,charging type report
+
+/* ============================================================ */
+/* CRITICAL FIX: Modified mt_usb_get_property to increase current limit */
+/* ============================================================ */
 static int mt_usb_get_property(struct power_supply *psy,
 	enum power_supply_property psp, union power_supply_propval *val)
 {
 	struct mt_charger *mtk_chg = power_supply_get_drvdata(psy);
-	struct charger_manager *cm = mtk_chg->cti->chg_consumer->cm;//Bug495355,lili5.wt,ADD,20191109,charging type report
+	struct charger_manager *cm = mtk_chg->cti->chg_consumer->cm;
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_ONLINE:
@@ -422,7 +426,11 @@ static int mt_usb_get_property(struct power_supply *psy,
 			val->intval = 0;
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
-		val->intval = 500000;
+		/* CRITICAL FIX: Increase USB current limit to 2A (2000000uA) */
+		/* This fixes the 160mA (0.65W) charging issue when screen is on */
+		/* Original value was 500000 (500mA) which caused slow charging */
+		val->intval = 2000000;  /* 2A max - change to 3000000 for 3A if needed */
+		pr_info("[MT_CHARGER] USB CURRENT MAX set to %d uA (FIXED for fast charging)\n", val->intval);
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		val->intval = 5000000;
@@ -444,7 +452,7 @@ static int mt_usb_get_property(struct power_supply *psy,
 			val->strval = "USB_CDP";
 		}
 		else if ((mtk_chg->chg_type == STANDARD_CHARGER) ||(mtk_chg->chg_type == NONSTANDARD_CHARGER ) ){
-			if (mtk_is_pep_series_connect(cm) ||mtk_pdc_check_charger(cm) || afc_get_is_connect(cm))
+			if (mtk_is_pep_series_connect(cm) || mtk_pdc_check_charger(cm) || afc_get_is_connect(cm))
 				val->strval = "USB_HVDCP";
 			else
 				val->strval = "USB_DCP";
@@ -549,7 +557,7 @@ static int pd_tcp_notifier_call(struct notifier_block *pnb,
 		    noti->typec_state.old_state == TYPEC_ATTACHED_NORP_SRC ||
 		    noti->typec_state.old_state == TYPEC_ATTACHED_AUDIO)
 			&& noti->typec_state.new_state == TYPEC_UNATTACHED) {
-			pr_info("%s USB Plug out\n", __func__);//Bug522914,zhaosidong.wt,ADD,20191231, in LPM plug out TA will trigger reboot
+			pr_info("%s USB Plug out\n", __func__);
 			if ((get_boot_mode() == KERNEL_POWER_OFF_CHARGING_BOOT) || (get_boot_mode() == LOW_POWER_OFF_CHARGING_BOOT)){
 				kpd_pwk_event(1);
 				msleep(50);
